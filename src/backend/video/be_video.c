@@ -522,7 +522,9 @@ static bool BEL_ST_UpdateTextureForMode3(void)
 	/****** Do update ******/
 	wereBlinkingCharsShown = areBlinkingCharsShown;
 	wasBlinkingCursorShown = isBlinkingCursorShown;
-	uint32_t *screenPixelPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture);
+	int pitchPix;
+	uint32_t *screenPixelPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture, &pitchPix);
+	pitchPix /= 4;
 	uint32_t * const firstScreenPixelPtr = screenPixelPtr;
 	uint8_t currChar;
 	const uint8_t *currCharFontPtr;
@@ -560,27 +562,27 @@ static bool BEL_ST_UpdateTextureForMode3(void)
 				}
 				// Add an extra 9th column on VGA
 				*currScrPixelPtr = ((currChar < 192) || (currChar > 223)) ? currBackgroundColor : *(currScrPixelPtr-1);
-				currScrPixelPtr += (g_sdlTexWidth-VGA_TXT_CHAR_PIX_WIDTH+1);
+				currScrPixelPtr += (pitchPix-VGA_TXT_CHAR_PIX_WIDTH+1);
 			}
 			screenPixelPtr += VGA_TXT_CHAR_PIX_WIDTH;
 		}
 		// Go to the character right below current one
-		screenPixelPtr += g_sdlTexWidth*(VGA_TXT_CHAR_PIX_HEIGHT-1);
+		screenPixelPtr += pitchPix*VGA_TXT_CHAR_PIX_HEIGHT-g_sdlTexWidth;
 	}
 	// Finish with outputting the cursor if required
 	currCharColor = g_sdlEGABGRAScreenColors[g_sdlVidMem.text[1+((TXT_COLS_NUM*g_sdlTxtCursorPosY+g_sdlTxtCursorPosX)<<1)] & 15];
 	if (isBlinkingCursorShown)
 	{
-		screenPixelPtr = firstScreenPixelPtr+g_sdlTexWidth;
-		screenPixelPtr += g_sdlTxtCursorPosY*VGA_TXT_CHAR_PIX_HEIGHT*g_sdlTexWidth;
+		screenPixelPtr = firstScreenPixelPtr+pitchPix;
+		screenPixelPtr += g_sdlTxtCursorPosY*VGA_TXT_CHAR_PIX_HEIGHT*pitchPix;
 		screenPixelPtr += g_sdlTxtCursorPosX*VGA_TXT_CHAR_PIX_WIDTH;
 			// Out of 3 last scanlines of char, draw to the first 2.
-		screenPixelPtr += (VGA_TXT_CHAR_PIX_HEIGHT-3)*g_sdlTexWidth;
+		screenPixelPtr += (VGA_TXT_CHAR_PIX_HEIGHT-3)*pitchPix;
 		for (currCharPixY = 0; currCharPixY < 2; currCharPixY++)
 		{
 			for (currCharPixX = 0; currCharPixX < VGA_TXT_CHAR_PIX_WIDTH; currCharPixX++, screenPixelPtr++)
 				*screenPixelPtr = currCharColor;
-			screenPixelPtr += g_sdlTexWidth - VGA_TXT_CHAR_PIX_WIDTH;
+			screenPixelPtr += pitchPix - VGA_TXT_CHAR_PIX_WIDTH;
 		}
 	}
 	g_sdlDoRefreshGfxOutput = false;
@@ -594,10 +596,17 @@ static bool BEL_ST_UpdateTextureForMode4(void)
 	if (!g_sdlDoRefreshGfxOutput)
 		return g_sdlForceGfxControlUiRefresh;
 	// That's easy now since there isn't a lot that can be done...
-	uint32_t *currPixPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture);
+	int pitchPix;
+	uint32_t *currPixPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture, &pitchPix),
+	         *currRowPtr = currPixPtr;
+	pitchPix /= 4;
 	uint8_t *currPalPixPtr = g_sdlHostScrMem.cgaGfx;
-	for (int pixnum = 0; pixnum < GFX_TEX_WIDTH*GFX_TEX_HEIGHT; ++pixnum, ++currPixPtr, ++currPalPixPtr)
-		*currPixPtr = g_sdlCGAGfxBGRAScreenColors[*currPalPixPtr];
+	for (int row = 0; row < GFX_TEX_HEIGHT; ++row)
+	{
+		for (int col = 0; col < GFX_TEX_WIDTH; ++col, ++currPixPtr, ++currPalPixPtr)
+			*currPixPtr = g_sdlCGAGfxBGRAScreenColors[*currPalPixPtr];
+		currPixPtr = currRowPtr = currRowPtr + pitchPix;
+	}
 
 	g_sdlDoRefreshGfxOutput = false;
 	BEL_ST_UnlockTexture(g_sdlTexture);
@@ -669,10 +678,17 @@ static bool BEL_ST_UpdateTextureForEGAVGAMode(void)
 		}
 	}
 
-	uint32_t *currPixPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture);
+	int pitchPix;
+	uint32_t *currPixPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture, &pitchPix),
+	         *currRowPtr = currPixPtr;
+	pitchPix /= 4;
 	currPalPixPtr = g_sdlHostScrMem.egaGfx;
-	for (int pixnum = 0; pixnum < g_sdlTexWidth*GFX_TEX_HEIGHT; ++pixnum, ++currPixPtr, ++currPalPixPtr)
-		*currPixPtr = g_sdlEGACurrBGRAPalette[*currPalPixPtr];
+	for (int row = 0; row < GFX_TEX_HEIGHT; ++row)
+	{
+		for (int col = 0; col < g_sdlTexWidth; ++col, ++currPixPtr, ++currPalPixPtr)
+			*currPixPtr = g_sdlEGACurrBGRAPalette[*currPalPixPtr];
+		currPixPtr = currRowPtr = currRowPtr + pitchPix;
+	}
 
 	g_sdlDoRefreshGfxOutput = false;
 	BEL_ST_UnlockTexture(g_sdlTexture);

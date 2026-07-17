@@ -208,14 +208,13 @@ bool BEL_ST_RenderFromTexture(BE_ST_Texture *texture, const BE_ST_Rect *dst)
 	return ret;
 }
 
-void *BEL_ST_LockTexture(BE_ST_Texture *texture)
+void *BEL_ST_LockTexture(BE_ST_Texture *texture, int *pitch)
 {
 	void *pixels;
-	int pitch;
-	if (!SDL_LockTexture((SDL_Texture *)texture, NULL, &pixels, &pitch))
+	if (!SDL_LockTexture((SDL_Texture *)texture, NULL, &pixels, pitch))
 	{
 		BE_Cross_LogMessage(BE_LOG_MSG_ERROR, "SDL_LockTexture failed,\n%s\n", SDL_GetError());
-		pixels = NULL;
+		return NULL;
 	}
 	return pixels;
 }

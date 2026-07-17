@@ -5,7 +5,9 @@ Changelog
 Post-release:
 
 * Fix command-line arguments -fulllauncher, -softlauncher.
-* Updated Nuked-OPL-fast to v1.8-fast.2.
+* Fix possible visual glitches by taking texture pitch into account
+(reproduced for text mode emulation after requesting a 720x400 sized texture).
+* Updated Nuked-OPL3-fast to v1.8-fast.3.
 
 Jun 6, 2026 (v0.66.0):
 

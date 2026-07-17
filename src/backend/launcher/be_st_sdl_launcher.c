@@ -2868,14 +2868,19 @@ static void BEL_ST_Launcher_UpdateHostDisplay(void)
 	{
 		BEL_ST_SleepMS(1);
 		g_sdlLauncherGfxCacheMarked = false;
-		uint32_t *currPixPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture);
+		int pitchPix;
+		uint32_t *currPixPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture, &pitchPix),
+		         *currRowPtr = currPixPtr;
+		pitchPix /= 4;
 		uint8_t *currPalPixPtr = g_sdlLauncherGfxCache;
-		for (int pixnum = 0; pixnum < BE_LAUNCHER_PIX_WIDTH*BE_LAUNCHER_PIX_HEIGHT; ++pixnum, ++currPixPtr, ++currPalPixPtr)
+		for (int row = 0; row < BE_LAUNCHER_PIX_HEIGHT; ++row)
 		{
-			*currPixPtr = g_sdlEGABGRAScreenColors[*currPalPixPtr];
+			for (int col = 0; col < BE_LAUNCHER_PIX_WIDTH; ++col, ++currPixPtr, ++currPalPixPtr)
+				*currPixPtr = g_sdlEGABGRAScreenColors[*currPalPixPtr];
+			currPixPtr = currRowPtr = currRowPtr + pitchPix;
 		}
-
 		BEL_ST_UnlockTexture(g_sdlTexture);
+
 		BEL_ST_RenderClear();
 		if (g_sdlTargetTexture)
 		{
@@ -3122,13 +3127,17 @@ void BE_ST_Launcher_WaitForUserBind(BEMenuItem *menuItem, BEMenuBind menuBind)
 	BEL_ST_Launcher_TurnTextSearchOff();
 
 	// HACK - Refresh window and make sure none of it is filled with random data while waiting for button press
-	uint32_t *currPixPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture);
+	int pitchPix;
+	uint32_t *currPixPtr = (uint32_t *)BEL_ST_LockTexture(g_sdlTexture, &pitchPix),
+	         *currRowPtr = currPixPtr;
+	pitchPix /= 4;
 	uint8_t *currPalPixPtr = g_sdlLauncherGfxCache;
-	for (int pixnum = 0; pixnum < BE_LAUNCHER_PIX_WIDTH*BE_LAUNCHER_PIX_HEIGHT; ++pixnum, ++currPixPtr, ++currPalPixPtr)
+	for (int row = 0; row < BE_LAUNCHER_PIX_HEIGHT; ++row)
 	{
-		*currPixPtr = g_sdlEGABGRAScreenColors[*currPalPixPtr];
+		for (int col = 0; col < BE_LAUNCHER_PIX_WIDTH; ++col, ++currPixPtr, ++currPalPixPtr)
+			*currPixPtr = g_sdlEGABGRAScreenColors[*currPalPixPtr];
+		currPixPtr = currRowPtr = currRowPtr + pitchPix;
 	}
-
 	BEL_ST_UnlockTexture(g_sdlTexture);
 
 	if (g_sdlTargetTexture)
