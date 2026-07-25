@@ -398,11 +398,27 @@ static void kl_compose(long alpha256)
 	}
 	camx = cx0 + ((cx1 - cx0) * alpha256 >> 8) - (KL_COMP_W - 320) / 2;
 	camy = cy0 + ((cy1 - cy0) * alpha256 >> 8);
-	maxcamx = (long)mapwidth * 16 - KL_COMP_W;
-	if (camx > maxcamx)
-		camx = maxcamx;
-	if (camx < 0)
-		camx = 0;
+	/* Slide at the PLAYABLE bounds: Dreams maps carry a MAPBORDER ring of
+	   out-of-bounds tiles the vanilla camera never shows (originxmin/max);
+	   clamping to the raw map edge exposed them in the wide view -- the
+	   same bug the Keen 4-6 build fixed with its edge-sliding crop. */
+	{
+		long mincamx = (long)MAPBORDER * 16;
+
+		maxcamx = ((long)mapwidth - MAPBORDER) * 16 - KL_COMP_W;
+		if (maxcamx < mincamx)
+		{
+			/* level narrower than the wide view: centre what exists */
+			camx = (mincamx + maxcamx) / 2;
+		}
+		else
+		{
+			if (camx > maxcamx)
+				camx = maxcamx;
+			if (camx < mincamx)
+				camx = mincamx;
+		}
+	}
 
 	tx0 = (int)(camx >> 4);
 	ty0 = (int)(camy >> 4);
@@ -669,6 +685,71 @@ void KL_CompRefresh(void)
 	}
 
 	KL_CompPresentTick();
+}
+
+/* KL_ARTDUMP companion: write the measured backdrop tile as a 16x16 PPM
+ * (whatever qualifying tiles are loaded at the time -- at the title map
+ * that's the title tileset, which is fine for a launcher background). */
+void KL_DumpBackdropTile(const char *path)
+{
+	static const uint8_t egaRGB[16][3] = {
+		{0x00, 0x00, 0x00}, {0x00, 0x00, 0xAA}, {0x00, 0xAA, 0x00},
+		{0x00, 0xAA, 0xAA}, {0xAA, 0x00, 0x00}, {0xAA, 0x00, 0xAA},
+		{0xAA, 0x55, 0x00}, {0xAA, 0xAA, 0xAA}, {0x55, 0x55, 0x55},
+		{0x55, 0x55, 0xFF}, {0x55, 0xFF, 0x55}, {0x55, 0xFF, 0xFF},
+		{0xFF, 0x55, 0x55}, {0xFF, 0x55, 0xFF}, {0xFF, 0xFF, 0x55},
+		{0xFF, 0xFF, 0xFF}};
+	static const uint8_t luma[16] = {
+		0, 20, 35, 40, 30, 35, 45, 65,
+		40, 60, 75, 80, 70, 75, 90, 100
+	};
+	long best = -1, bestscore = 0;
+	id0_unsigned_t t;
+	const uint8_t *til;
+	FILE *f;
+	int x, y;
+
+	for (t = 1; t < NUMTILE16; t++)
+	{
+		const uint8_t *tt = kl_decode_tile(t);
+		long mean = 0, var = 0, i2, d, sd = 0;
+
+		if (!tt)
+			continue;
+		for (i2 = 0; i2 < 256; i2++)
+			mean += luma[tt[i2] & 15];
+		mean /= 256;
+		for (i2 = 0; i2 < 256; i2++)
+		{
+			d = luma[tt[i2] & 15] - mean;
+			var += d * d;
+		}
+		var /= 256;
+		while (sd * sd < var)
+			sd++;
+		if (mean < 40 && sd >= 2 && sd <= 35)
+		{
+			long score = mean + (sd > 11 ? sd - 11 : 11 - sd);
+			if (best < 0 || score < bestscore)
+			{
+				best = (long)t;
+				bestscore = score;
+			}
+		}
+	}
+	if (best < 0)
+		return;
+	til = kl_decode_tile((id0_unsigned_t)best);
+	if (!til)
+		return;
+	f = fopen(path, "wb");
+	if (!f)
+		return;
+	fprintf(f, "P6" "%c" "16 16" "%c" "255" "%c", 10, 10, 10);
+	for (y = 0; y < 16; y++)
+		for (x = 0; x < 16; x++)
+			fwrite(egaRGB[til[y * 16 + x] & 15], 1, 3, f);
+	fclose(f);
 }
 
 void KL_CompStandDown(void)

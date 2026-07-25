@@ -689,6 +689,18 @@ DemoLoop_Old (void)
 				RF_Refresh();
 				RF_Refresh();
 
+				/* KeenLauncher: KL_ARTDUMP=<file> writes the title screen as
+				   a PPM and exits -- the launcher pulls it into the game's
+				   tile, rendered from the player's own data */
+				if (getenv("KL_ARTDUMP"))
+				{
+					void BE_ST_KL_DumpScreen(const char *);
+					void KL_DumpBackdropTile(const char *);
+					BE_ST_KL_DumpScreen(getenv("KL_ARTDUMP"));
+					KL_DumpBackdropTile("backdrop_tile.ppm");
+					exit(0);
+				}
+
 				if (Wait(TickBase * 2))
 					break;
 

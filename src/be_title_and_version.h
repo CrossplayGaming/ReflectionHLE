@@ -6,7 +6,7 @@
 #ifdef REFKEEN_UNIFIED_BUILD
 #define REFKEEN_TITLE_STRING "ReflectionHLE"
 #elif (defined REFKEEN_VER_KDREAMS)
-#define REFKEEN_TITLE_STRING "Reflection KDreams"
+#define REFKEEN_TITLE_STRING "Commander Keen: Keen Dreams"
 #elif (defined REFKEEN_VER_CAT3D)
 #define REFKEEN_TITLE_STRING "Reflection Cat3D"
 #elif (defined REFKEEN_VER_CATABYSS)

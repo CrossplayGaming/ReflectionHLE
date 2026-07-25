@@ -840,6 +840,32 @@ static void BEL_ST_KL_DrawBackdropAndFrame(const BE_ST_Rect *content,
 	BEL_ST_KL_FrameEdges(r, scale, 0xFF000000, 0xFF000000);
 }
 
+/* Dump the vanilla CRTC window (320x200 EGA) to a PPM -- used by the
+ * launcher's title-art pull (KL_ARTDUMP). */
+void BE_ST_KL_DumpScreen(const char *path)
+{
+	FILE *f = fopen(path, "wb");
+	uint32_t warp = 0x80000;
+	uint32_t lineStart = (8 * g_sdlScreenStartAddress + g_sdlPelPanning) % warp;
+	int row, col;
+
+	if (!f)
+		return;
+	fprintf(f, "P6\n320 200\n255\n");
+	for (row = 0; row < 200; row++)
+	{
+		for (col = 0; col < 320; col++)
+		{
+			uint8_t idx = ((uint8_t *)g_sdlVidMem.A000.egaGfx)[(lineStart + col) % warp] & 15;
+			uint32_t c = g_sdlEGABGRAScreenColors[idx];
+			uint8_t rgb[3] = {(uint8_t)(c >> 16), (uint8_t)(c >> 8), (uint8_t)c};
+			fwrite(rgb, 1, 3, f);
+		}
+		lineStart = (lineStart + g_sdlPixLineWidth) % warp;
+	}
+	fclose(f);
+}
+
 void BE_ST_KL_WideFrame(const uint8_t *pix, int w, int h)
 {
 	if (w <= 0 || h <= 0 || w * h > (int)sizeof(g_klWidePix))

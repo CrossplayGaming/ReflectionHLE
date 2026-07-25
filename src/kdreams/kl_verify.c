@@ -118,7 +118,7 @@ static void kl_init(void)
 int KL_HarnessActive(void)
 {
 	return getenv("KL_RECORD") != NULL || getenv("KL_REPLAY") != NULL ||
-	       getenv("KL_WARP") != NULL;
+	       getenv("KL_WARP") != NULL || getenv("KL_ARTDUMP") != NULL;
 }
 
 int KL_WarpLevel(void)
