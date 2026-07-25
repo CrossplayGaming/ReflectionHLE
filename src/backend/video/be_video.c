@@ -727,6 +727,123 @@ static bool BEL_ST_UpdateTextureForEGAVGAMode(void)
 
 static uint32_t g_be_sdlLastRefreshTicks = 0;
 
+#ifdef REFKEEN_VER_KDREAMS
+/* [KeenLauncher] Widescreen frame handed over by the game-side compositor
+ * (kl_compositor.c).  While fresh, it is presented in place of the vanilla
+ * CRTC window; any direct-to-page screen turns it off again, falling back
+ * to the classic 4:3 path.  Palette-expanded per present so EGA palette
+ * changes (flashes etc.) apply to the wide view too. */
+static uint8_t g_klWidePix[512 * 240];
+static int g_klWideW, g_klWideH;
+static bool g_klWideOn;
+static BE_ST_Texture *g_klWideTexture, *g_klWideTargetTexture;
+static int g_klWideTexW, g_klWideTexH, g_klWideScale;
+
+void BE_ST_KL_WideFrame(const uint8_t *pix, int w, int h)
+{
+	if (w <= 0 || h <= 0 || w * h > (int)sizeof(g_klWidePix))
+		return;
+	memcpy(g_klWidePix, pix, (size_t)w * h);
+	g_klWideW = w;
+	g_klWideH = h;
+	g_klWideOn = true;
+	g_sdlDoRefreshGfxOutput = true;
+}
+
+void BE_ST_KL_WideOff(void)
+{
+	if (g_klWideOn)
+		g_sdlDoRefreshGfxOutput = true;
+	g_klWideOn = false;
+}
+
+/* present the wide frame: palette-expand, sharp prescale, aspect fit */
+static bool BEL_ST_KL_PresentWide(void)
+{
+	int outW, outH, scale, pitchPix, row, col;
+	uint32_t *currPixPtr, *currRowPtr;
+	const uint8_t *src;
+	BE_ST_Rect dst;
+
+	BEL_ST_GetWindowSizeInPixels(&outW, &outH);
+
+	/* aspect fit for w x (h*1.2) EGA pixels */
+	{
+		int64_t contentW = (int64_t)g_klWideW * 5, contentH = (int64_t)g_klWideH * 6;
+		if ((int64_t)outW * contentH > (int64_t)outH * contentW)
+		{
+			dst.h = outH;
+			dst.w = (int)((int64_t)outH * contentW / contentH);
+		}
+		else
+		{
+			dst.w = outW;
+			dst.h = (int)((int64_t)outW * contentH / contentW);
+		}
+		dst.x = (outW - dst.w) / 2;
+		dst.y = (outH - dst.h) / 2;
+	}
+
+	/* cover prescale so the final blit is a slight downscale (crisp) */
+	scale = (dst.h + g_klWideH - 1) / g_klWideH;
+	if (scale < 1)
+		scale = 1;
+	if (scale > 12)
+		scale = 12;
+
+	if (!g_klWideTexture || g_klWideTexW != g_klWideW || g_klWideTexH != g_klWideH)
+	{
+		if (g_klWideTexture)
+			BEL_ST_DestroyTextureWrapper(&g_klWideTexture);
+		BEL_ST_CreateTextureWrapper(&g_klWideTexture, g_klWideW, g_klWideH, false, false);
+		g_klWideTexW = g_klWideW;
+		g_klWideTexH = g_klWideH;
+		g_klWideScale = 0;
+	}
+	if (!g_klWideTexture)
+		return false;
+	if (!g_klWideTargetTexture || g_klWideScale != scale)
+	{
+		if (g_klWideTargetTexture)
+			BEL_ST_DestroyTextureWrapper(&g_klWideTargetTexture);
+		BEL_ST_CreateTextureWrapper(&g_klWideTargetTexture,
+			g_klWideW * scale, g_klWideH * scale, true, true);
+		g_klWideScale = scale;
+	}
+
+	currPixPtr = (uint32_t *)BEL_ST_LockTexture(g_klWideTexture, &pitchPix);
+	if (!currPixPtr)
+		return false;
+	currRowPtr = currPixPtr;
+	pitchPix /= 4;
+	src = g_klWidePix;
+	for (row = 0; row < g_klWideH; ++row)
+	{
+		for (col = 0; col < g_klWideW; ++col)
+			currPixPtr[col] = g_sdlEGACurrBGRAPalette[src[col] & 15];
+		src += g_klWideW;
+		currPixPtr = currRowPtr = currRowPtr + pitchPix;
+	}
+	BEL_ST_UnlockTexture(g_klWideTexture);
+
+	BEL_ST_SetDrawColor(0xFF000000);
+	BEL_ST_RenderClear();
+	if (g_klWideTargetTexture && BEL_ST_SetRenderTarget(g_klWideTargetTexture))
+	{
+		BEL_ST_RenderFromTexture(g_klWideTexture, NULL);
+		BEL_ST_SetRenderTarget(NULL);
+		BEL_ST_RenderFromTexture(g_klWideTargetTexture, &dst);
+	}
+	else
+	{
+		BEL_ST_RenderFromTexture(g_klWideTexture, &dst);
+	}
+	BEL_ST_FinishHostDisplayUpdate();
+	g_be_sdlLastRefreshTicks = BEL_ST_GetTicksMS();
+	return true;
+}
+#endif /* REFKEEN_VER_KDREAMS */
+
 void BEL_ST_UpdateHostDisplay(void)
 {
 	// Refresh graphics from time to time in case a part of the window is overridden by anything,
@@ -736,6 +853,18 @@ void BEL_ST_UpdateHostDisplay(void)
 	if (currRefreshTicks - g_be_sdlLastRefreshTicks >= 100)
 		g_sdlForceGfxControlUiRefresh = true;
 
+#ifdef REFKEEN_VER_KDREAMS
+	/* [KeenLauncher] wide gameplay frame takes over the whole present */
+	if (g_klWideOn && g_sdlScreenMode != 3)
+	{
+		if (g_sdlDoRefreshGfxOutput || g_sdlForceGfxControlUiRefresh)
+		{
+			g_sdlDoRefreshGfxOutput = false;
+			BEL_ST_KL_PresentWide();
+		}
+		return;
+	}
+#endif
 	if (g_sdlScreenMode == 3)
 		ret = BEL_ST_UpdateTextureForMode3();
 	else if (g_sdlScreenMode == 4) // CGA graphics

@@ -1034,7 +1034,11 @@ void RF_ForceRefresh (void)
 */
 
 void RF_NewPosition_EGA (id0_unsigned_t x, id0_unsigned_t y)
-{
+{	{
+		void KL_CompReset(void);
+		KL_CompReset();
+	}
+
 	id0_int_t mx,my;
 	id0_byte_t	*page0ptr,*page1ptr;
 	id0_unsigned_t 	updatenum;
@@ -1379,6 +1383,15 @@ linknewspot:
 
 	sprite->shift = shift; // REFKEEN - New member, used after swapping CGA/EGA graphics from the 2015 port
 
+	{
+		/* KeenLauncher compositor: capture the org-adjusted world position
+		   at full precision (the list itself only keeps 2px-grid coords) */
+		void KL_NoteSprite(void *, id0_unsigned_t, id0_unsigned_t,
+		                   id0_unsigned_t, id0_int_t, void *, size_t);
+		KL_NoteSprite(sprite, globalx, globaly, spritenumber, priority,
+		              spritearray, sizeof(spritearray[0]));
+	}
+
 // save the sprite pointer off in the user's pointer so it can be moved
 // again later
 
@@ -1402,6 +1415,11 @@ void RF_RemoveSprite_EGA (void **user)
 	sprite = (spritelisttype *)*user;
 	if (!sprite)
 		return;
+
+	{
+		void KL_DropSprite(void *, void *, size_t);
+		KL_DropSprite(sprite, spritearray, sizeof(spritearray[0]));
+	}
 
 //
 // post an erase block to both pages by copying screenx,screeny,width,height
@@ -1767,6 +1785,13 @@ asm	mov	[WORD PTR es:di],UPDATETERMINATE
 	otherpage ^= 1;
 	bufferofs = screenstart[otherpage];
 	displayofs = screenstart[screenpage];
+
+	{
+		/* KeenLauncher compositor: recompose the wide frame from this
+		   fresh sim state (no-op when disabled; falls back to classic) */
+		void KL_CompRefresh(void);
+		KL_CompRefresh();
+	}
 
 //
 // calculate tics since last refresh for adaptive timing
