@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "kd_def.h"
+#include "kl_verify.h"
 //#pragma hdrstop
 
 // REFKEEN - Apparently the CATALOG macro was added only into version 1.05,
@@ -448,7 +449,9 @@ void InitGame (void)
 
 	MM_Startup ();
 
-	if (current_gamever_int == 100)
+	// KeenLauncher verify harness: the piracy screen blocks on a keypress,
+	// which a headless record/replay run can never provide -- skip it there
+	if (current_gamever_int == 100 && !KL_HarnessActive())
 	{
 		// Handle piracy screen...
 		//

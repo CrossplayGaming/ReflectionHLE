@@ -23,6 +23,7 @@
 // but we don't need this either way
 //#include <dir.h>
 #include "kd_def.h"
+#include "kl_verify.h"
 
 //#pragma hdrstop
 
@@ -625,6 +626,21 @@ void
 DemoLoop_Old (void)
 {
 	const id0_char_t            *s;
+
+	/* KeenLauncher verify harness: KL_WARP=<n> boots straight into level n,
+	   so record and replay skip the (non-deterministic) control panel */
+	{
+		int kl_lvl = KL_WarpLevel();
+		if (kl_lvl >= 0)
+		{
+			US_SetLoadSaveHooks(LoadGame,SaveGame,ResetGame);
+			NewGame();
+			gamestate.mapon = kl_lvl;
+			GameLoop();
+			Quit(NULL);
+		}
+	}
+
 	//id0_word_t            move;
 	//id0_longword_t        lasttime;
 	WindowRec       mywin;
@@ -764,6 +780,21 @@ DemoLoop_Old (void)
 void
 DemoLoop_New (void)
 {
+
+	/* KeenLauncher verify harness: KL_WARP=<n> boots straight into level n,
+	   so record and replay skip the (non-deterministic) control panel */
+	{
+		int kl_lvl = KL_WarpLevel();
+		if (kl_lvl >= 0)
+		{
+			US_SetLoadSaveHooks(LoadGame,SaveGame,ResetGame);
+			NewGame();
+			gamestate.mapon = kl_lvl;
+			GameLoop();
+			Quit(NULL);
+		}
+	}
+
 	//id0_char_t		*s;
 	//id0_word_t		move;
 	//id0_longword_t	lasttime;

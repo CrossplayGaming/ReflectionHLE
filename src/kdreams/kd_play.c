@@ -20,6 +20,7 @@
 // KD_PLAY.C
 
 #include "kd_def.h"
+#include "kl_verify.h"
 //#pragma	hdrstop
 
 /*
@@ -1547,6 +1548,7 @@ void PlayLoop (void)
 	{
 		CalcSingleGravity ();
 		IN_ReadControl(0,&c);		// get player input
+		KL_FrameInput(&c);		// KeenLauncher verify harness (no-op unless enabled)
 		if (!c.button0)
 			button0held = 0;
 		if (!c.button1)

@@ -34,6 +34,7 @@ updated
 */
 
 #include "id_heads.h"
+#include "kl_verify.h"
 //#pragma hdrstop
 
 /*
@@ -1799,6 +1800,8 @@ asm	mov	[WORD PTR es:di],UPDATETERMINATE
 		SD_AddToTimeCount(-(tics-MAXTICS));
 		tics = MAXTICS;
 	}
+
+	KL_FrameTics();	// KeenLauncher verify harness: force recorded tics on replay
 }
 
 //#endif		// GRMODE == EGAGR

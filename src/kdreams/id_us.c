@@ -790,10 +790,15 @@ US_FinishTextScreen(void)
 	else
 		USL_ScreenDraw(30, 18, "Ready - Press a Key",0xCE);
 
-	if (!tedlevel)
 	{
-		IN_ClearKeysDown();
-		IN_Ack();
+		/* KeenLauncher verify harness: headless runs have nobody to press
+		   a key, so reuse the original tedlevel skip for them */
+		int KL_HarnessActive(void);
+		if (!tedlevel && !KL_HarnessActive())
+		{
+			IN_ClearKeysDown();
+			IN_Ack();
+		}
 	}
 	IN_ClearKeysDown();
 
