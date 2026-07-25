@@ -866,6 +866,24 @@ void BE_ST_KL_DumpScreen(const char *path)
 	fclose(f);
 }
 
+/* Read a subrect of the vanilla CRTC window (chunky 8bpp EGA indices) --
+ * used to composite US dialogs over the frozen wide frame. */
+void BE_ST_KL_ReadWindow(int x, int y, int w, int h, uint8_t *out)
+{
+	uint32_t warp = 0x80000;
+	uint32_t lineStart = (8 * g_sdlScreenStartAddress + g_sdlPelPanning) % warp;
+	int row, col;
+
+	for (row = 0; row < y + h && row < 240; row++)
+	{
+		if (row >= y)
+			for (col = 0; col < w; col++)
+				out[(row - y) * w + col] =
+					((uint8_t *)g_sdlVidMem.A000.egaGfx)[(lineStart + x + col) % warp] & 15;
+		lineStart = (lineStart + g_sdlPixLineWidth) % warp;
+	}
+}
+
 void BE_ST_KL_WideFrame(const uint8_t *pix, int w, int h)
 {
 	if (w <= 0 || h <= 0 || w * h > (int)sizeof(g_klWidePix))

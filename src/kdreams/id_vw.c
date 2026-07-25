@@ -1175,13 +1175,6 @@ id0_int_t VW_MarkUpdateBlock (id0_int_t x1, id0_int_t y1, id0_int_t x2, id0_int_
 
 void VW_UpdateScreen (void)
 {
-	{
-		/* KeenLauncher compositor: a direct-to-page screen is being shown
-		   (menu, text window) -- present the classic view for it */
-		void KL_CompStandDown(void);
-		KL_CompStandDown();
-	}
-
 	if (cursorvisible>0)
 		VWL_DrawCursor();
 
@@ -1198,6 +1191,15 @@ void VW_UpdateScreen (void)
 
 	if (cursorvisible>0)
 		VWL_EraseCursor();
+
+	{
+		/* KeenLauncher compositor: a direct-to-page window is being shown.
+		   AFTER the update lands on the display page, either composite it
+		   over the frozen wide frame (in-game dialogs) or fall back to the
+		   classic view (menus outside gameplay). */
+		void KL_CompStandDown(void);
+		KL_CompStandDown();
+	}
 }
 
 

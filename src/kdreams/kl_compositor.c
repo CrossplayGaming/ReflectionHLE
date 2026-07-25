@@ -288,6 +288,11 @@ void KL_CompReset(void)
 
 /* ---------------------------------------------------------------- compose */
 
+#define KL_OVL_MAX (320 * 200)
+static uint8_t kl_ovl[KL_OVL_MAX];
+static int kl_ovl_w, kl_ovl_h, kl_ovl_x, kl_ovl_y, kl_ovl_active;
+static long kl_last_camx, kl_last_camy;
+
 static uint8_t kl_frame[KL_COMP_W * KL_COMP_H];
 
 static int kl_wide_enabled(void)
@@ -420,6 +425,9 @@ static void kl_compose(long alpha256)
 		}
 	}
 
+	kl_last_camx = camx; /* for the dialog overlay's page->wide mapping */
+	kl_last_camy = camy;
+
 	tx0 = (int)(camx >> 4);
 	ty0 = (int)(camy >> 4);
 	px = -(int)(camx & 15);
@@ -520,6 +528,54 @@ static void kl_compose(long alpha256)
 		}
 		kl_draw_ghosts(pri, camx, camy);
 		kl_draw_sprites(pri, camx, camy, alpha256);
+	}
+
+	if (kl_ovl_active)
+	{
+		/* Centre the dialog horizontally in the wide frame (matching the
+		   Keen 1-3 build's explicit centering); vertical keeps the page
+		   position mapped through the camera difference. */
+		int ox = (KL_COMP_W - kl_ovl_w) / 2, x, y;
+		int oy = (int)(kl_cam_cur_y - kl_last_camy);
+
+		for (y = 0; y < kl_ovl_h; y++)
+		{
+			int dy = kl_ovl_y + oy + y;
+			if (dy < 0 || dy >= KL_COMP_H)
+				continue;
+			for (x = 0; x < kl_ovl_w; x++)
+			{
+				int dx = ox + x;
+				if (dx < 0 || dx >= KL_COMP_W)
+					continue;
+				kl_frame[dy * KL_COMP_W + dx] =
+					(getenv("KL_TRACE") &&
+					 (y == 0 || y == kl_ovl_h - 1 || x == 0 ||
+					  x == kl_ovl_w - 1))
+					? 5 /* magenta debug border */
+					: kl_ovl[y * kl_ovl_w + x];
+			}
+		}
+	}
+
+	if (kl_ovl_active && getenv("KL_FRAMEDUMP"))
+	{
+		static int dumped;
+		FILE *df = dumped ? NULL : fopen(getenv("KL_FRAMEDUMP"), "wb");
+		dumped = 1;
+		if (df)
+		{
+			static const uint8_t rgb16[16][3] = {
+				{0,0,0},{0,0,170},{0,170,0},{0,170,170},{170,0,0},
+				{170,0,170},{170,85,0},{170,170,170},{85,85,85},
+				{85,85,255},{85,255,85},{85,255,255},{255,85,85},
+				{255,85,255},{255,255,85},{255,255,255}};
+			int i2;
+			fprintf(df, "P6\n%d %d\n255\n", KL_COMP_W, KL_COMP_H);
+			for (i2 = 0; i2 < KL_COMP_W * KL_COMP_H; i2++)
+				fwrite(rgb16[kl_frame[i2] & 15], 1, 3, df);
+			fclose(df);
+		}
 	}
 
 	BE_ST_KL_WideFrame(kl_frame, KL_COMP_W, KL_COMP_H);
@@ -661,6 +717,8 @@ void KL_CompRefresh(void)
 
 	kl_send_backdrop();
 
+	kl_ovl_active = 0; /* a real sim frame: any dialog is gone */
+
 	/* rotate snapshots: the placements of this frame are complete */
 	kl_cam_prev_x = kl_cam_cur_x;
 	kl_cam_prev_y = kl_cam_cur_y;
@@ -752,8 +810,54 @@ void KL_DumpBackdropTile(const char *path)
 	fclose(f);
 }
 
+/* US dialog overlay: while gameplay is paused behind a window (quicksave
+ * prompt, PAUSED box...), keep showing the frozen WIDE frame and composite
+ * the window rectangle over its centre -- the same behaviour as the other
+ * games, instead of dropping to framed 4:3.  Cleared by the next real
+ * RF_Refresh (gameplay resumed). */
+
 void KL_CompStandDown(void)
 {
-	kl_have_frame = 0;
-	BE_ST_KL_WideOff();
+	void BE_ST_KL_ReadWindow(int, int, int, int, uint8_t *);
+	int wx, wy, ww, wh;
+
+	if (!kl_have_frame || !kl_wide_enabled())
+	{
+		/* no live wide frame (menus outside gameplay): classic view */
+		kl_have_frame = 0;
+		BE_ST_KL_WideOff();
+		return;
+	}
+	/* capture the window (plus its 1-tile frame ring) from the page */
+	wx = (int)WindowX - 8;
+	wy = (int)WindowY - 8;
+	ww = (int)WindowW + 16;
+	wh = (int)WindowH + 16;
+	if (wx < 0) wx = 0;
+	if (wy < 0) wy = 0;
+	if (ww > 320 - wx) ww = 320 - wx;
+	if (wh > 200 - wy) wh = 200 - wy;
+	if (ww <= 0 || wh <= 0 || ww * wh > KL_OVL_MAX)
+	{
+		kl_have_frame = 0;
+		BE_ST_KL_WideOff();
+		return;
+	}
+	if (getenv("KL_TRACE"))
+	{
+		fprintf(stderr,
+		        "KL OVL: Win=%d,%d %dx%d bufferofs=%u displayofs=%u panadjust=%u panx=%u\n",
+		        (int)WindowX, (int)WindowY, (int)WindowW, (int)WindowH,
+		        (unsigned)bufferofs, (unsigned)displayofs,
+		        (unsigned)panadjust, (unsigned)panx);
+		fflush(stderr);
+	}
+	BE_ST_KL_ReadWindow(wx, wy, ww, wh, kl_ovl);
+	kl_ovl_w = ww;
+	kl_ovl_h = wh;
+	kl_ovl_x = wx;
+	kl_ovl_y = wy;
+	kl_ovl_active = 1;
+	/* recompose immediately so the dialog shows this frame */
+	KL_CompPresentTick();
 }
