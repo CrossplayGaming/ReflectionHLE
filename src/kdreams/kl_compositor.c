@@ -609,22 +609,26 @@ static void kl_send_backdrop(void)
 		fprintf(stderr, "KL backdrop: tile %ld score %ld\n", best, bestscore);
 	if (best < 0)
 		return;
-	memset(pattern, 0, sizeof(pattern));
-	for (cy = 0; cy < 4; cy++)
-		for (cx = 0; cx < 4; cx++)
-		{
-			const uint8_t *til;
+	/* Solid textures tile CONTINUOUSLY (the scatter mask the other games
+	   use was a starfield trick -- sparse points on black; floating dirt
+	   blocks just read as noise).  A dimming remap keeps the wall clearly
+	   behind the game: bright EGA colors drop to their dark counterparts. */
+	{
+		static const uint8_t dim[16] = {
+			0, 1, 2, 3, 4, 5, 6, 8,
+			0, 1, 2, 3, 4, 5, 6, 8
+		};
+		const uint8_t *til = kl_decode_tile((id0_unsigned_t)best);
 
-			if (!((0x8412 >> (cy * 4 + cx)) & 1))
-				continue;
-			til = kl_decode_tile((id0_unsigned_t)best);
-			if (!til)
-				continue;
-			for (y = 0; y < 16; y++)
-				for (x = 0; x < 16; x++)
-					pattern[(cy * 16 + y) * 64 + cx * 16 + x] =
-						til[y * 16 + x];
-		}
+		if (!til)
+			return;
+		for (cy = 0; cy < 4; cy++)
+			for (cx = 0; cx < 4; cx++)
+				for (y = 0; y < 16; y++)
+					for (x = 0; x < 16; x++)
+						pattern[(cy * 16 + y) * 64 + cx * 16 + x] =
+							dim[til[y * 16 + x] & 15];
+	}
 	BE_ST_KL_SetBackdrop(pattern);
 	sent = 1;
 }
