@@ -596,9 +596,11 @@ static void kl_compose(long alpha256)
 
 	if (kl_ovl_active && getenv("KL_FRAMEDUMP"))
 	{
-		static int dumped;
-		FILE *df = dumped ? NULL : fopen(getenv("KL_FRAMEDUMP"), "wb");
-		dumped = 1;
+		static int dumped, settle;
+		FILE *df = (!dumped && ++settle >= 40)
+		           ? fopen(getenv("KL_FRAMEDUMP"), "wb") : NULL;
+		if (df)
+			dumped = 1;
 		if (df)
 		{
 			static const uint8_t rgb16[16][3] = {

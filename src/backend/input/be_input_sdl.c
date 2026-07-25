@@ -14,6 +14,28 @@ const int g_sdlJoystickAxisBinaryThreshold = 16384, g_sdlJoystickAxisDeadZone = 
 
 SDL_Joystick *g_sdlJoysticks[BE_ST_MAXJOYSTICKS];
 SDL_Gamepad *g_sdlControllers[BE_ST_MAXJOYSTICKS];
+
+/* [KeenLauncher] raw pad poll for the in-game rebinding menu: returns the
+ * pad feature id (SDL gamepad button, or 20/21 for the triggers) currently
+ * pressed on any pad, else -1. */
+int BE_ST_KL_PollPadFeature(void)
+{
+	int i, b;
+
+	for (i = 0; i < BE_ST_MAXJOYSTICKS; i++)
+	{
+		if (!g_sdlControllers[i])
+			continue;
+		for (b = 0; b < SDL_GAMEPAD_BUTTON_COUNT && b < 20; b++)
+			if (SDL_GetGamepadButton(g_sdlControllers[i], (SDL_GamepadButton)b))
+				return b;
+		if (SDL_GetGamepadAxis(g_sdlControllers[i], SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 12000)
+			return 20;
+		if (SDL_GetGamepadAxis(g_sdlControllers[i], SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 12000)
+			return 21;
+	}
+	return -1;
+}
 SDL_JoystickID g_sdlJoysticksInstanceIds[BE_ST_MAXJOYSTICKS];
 
 static BESDLMouseModeEnum g_sdlMouseMode = BE_ST_MOUSEMODE_ABS_WITH_CURSOR;
