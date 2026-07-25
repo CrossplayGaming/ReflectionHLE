@@ -22,6 +22,7 @@ list(APPEND kdreams_src
 	src/kdreams/kd_play.c
 	src/kdreams/kl_verify.c
 	src/kdreams/kl_compositor.c
+	src/kdreams/kl_quicksave.c
 	src/kdreams/key_scancode_converters.c
 	src/kdreams/lzhuf.c
 	src/kdreams/soft.c

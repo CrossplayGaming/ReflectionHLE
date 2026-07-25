@@ -238,9 +238,26 @@ void CheckKeys (void)
 	}
 
 //
+// KeenLauncher: F5 quicksave / F9 quickload (matches Keen 4-6; the control
+// panel keeps F1-F4, F6, F7 and Esc)
+//
+	if (LastScan == sc_F5 || LastScan == sc_F9)
+	{
+		void KL_QuickSaveLoad(int load);
+		int kl_load = (LastScan == sc_F9);
+
+		IN_ClearKeysDown();
+		VW_FixRefreshBuffer ();
+		KL_QuickSaveLoad(kl_load);
+		if (!loadedgame)
+			RF_ForceRefresh();
+		lasttimecount = SD_GetTimeCount();
+	}
+
+//
 // F1-F7/ESC to enter control panel
 //
-	if ( (LastScan >= sc_F1 && LastScan <= sc_F7) || LastScan == sc_Escape)
+	if ( ((LastScan >= sc_F1 && LastScan <= sc_F7) && LastScan != sc_F5) || LastScan == sc_Escape)
 	{
 		VW_FixRefreshBuffer ();
 		US_CenterWindow (20,8);
