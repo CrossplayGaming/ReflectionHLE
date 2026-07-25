@@ -13,7 +13,9 @@ void BE_ST_KL_WideOff(void);
 /* sprite world positions captured in RF_PlaceSprite_EGA (id_rf.c) */
 typedef struct
 {
-	id0_unsigned_t worldx, worldy; /* global units, org-adjusted */
+	id0_unsigned_t worldx, worldy; /* live capture (placements in progress) */
+	id0_unsigned_t showx, showy;   /* completed sim frame N */
+	id0_unsigned_t prevx, prevy;   /* completed sim frame N-1 */
 	id0_unsigned_t grseg;
 	id0_int_t priority;
 	id0_int_t live;
@@ -21,6 +23,14 @@ typedef struct
 
 #define KL_MAXSPR 60 /* MAXSPRITES is 60 in id_rf.c */
 static KL_SprNote kl_spr[KL_MAXSPR];
+
+/* camera + timing snapshots for present-time interpolation */
+static long kl_cam_cur_x, kl_cam_cur_y, kl_cam_prev_x, kl_cam_prev_y;
+static uint32_t kl_refresh_ms;  /* when the current sim frame landed */
+static uint32_t kl_frame_ms;    /* its expected duration */
+static int kl_have_frame;
+
+#include "be_st_sdl_private.h" /* BEL_ST_GetTicksMS */
 
 void KL_NoteSprite(void *user, id0_unsigned_t gx, id0_unsigned_t gy,
                    id0_unsigned_t spritenumber, id0_int_t priority,
@@ -30,6 +40,12 @@ void KL_NoteSprite(void *user, id0_unsigned_t gx, id0_unsigned_t gy,
 
 	if (idx >= KL_MAXSPR)
 		return;
+	if (!kl_spr[idx].live)
+	{
+		/* fresh sprite: no previous position to glide from */
+		kl_spr[idx].showx = kl_spr[idx].prevx = gx;
+		kl_spr[idx].showy = kl_spr[idx].prevy = gy;
+	}
 	kl_spr[idx].worldx = gx;
 	kl_spr[idx].worldy = gy;
 	kl_spr[idx].grseg = spritenumber;
@@ -196,6 +212,7 @@ void KL_CompReset(void)
 	int i;
 
 	memset(kl_spr, 0, sizeof(kl_spr));
+	kl_have_frame = 0;
 	/* graphics chunks may have been purged/reloaded on level change */
 	for (i = 0; i < (int)NUMTILE16; i++)
 		if (kl_tile_cache[i])
@@ -230,22 +247,32 @@ static int kl_wide_enabled(void)
 	return cached;
 }
 
-static void kl_draw_sprites(int priority, long camx, long camy)
+static void kl_draw_sprites(int priority, long camx, long camy, long alpha256)
 {
 	int i, x, y;
 
 	for (i = 0; i < KL_MAXSPR; i++)
 	{
 		const KL_SprImg *img;
-		long sx, sy;
+		long sx, sy, px, py, cx, cy;
 
 		if (!kl_spr[i].live || kl_spr[i].priority != priority)
 			continue;
 		img = kl_decode_sprite(kl_spr[i].grseg);
 		if (!img)
 			continue;
-		sx = (long)(kl_spr[i].worldx >> 4) - camx;
-		sy = (long)(kl_spr[i].worldy >> 4) - camy;
+		/* lerp in whole world pixels; big jumps (teleports) snap */
+		px = (long)(kl_spr[i].prevx >> 4);
+		py = (long)(kl_spr[i].prevy >> 4);
+		cx = (long)(kl_spr[i].showx >> 4);
+		cy = (long)(kl_spr[i].showy >> 4);
+		if (cx - px > 32 || px - cx > 32 || cy - py > 32 || py - cy > 32)
+		{
+			px = cx;
+			py = cy;
+		}
+		sx = px + ((cx - px) * alpha256 >> 8) - camx;
+		sy = py + ((cy - py) * alpha256 >> 8) - camy;
 		for (y = 0; y < img->h; y++)
 		{
 			long dy = sy + y;
@@ -264,28 +291,30 @@ static void kl_draw_sprites(int priority, long camx, long camy)
 	}
 }
 
-void KL_CompRefresh(void)
+static void kl_compose(long alpha256)
 {
-	long camx, camy, maxcamx;
+	long camx, camy, maxcamx, cx0, cy0, cx1, cy1;
 	int tx0, ty0, px, py, tx, ty, pri;
 
-	if (!kl_wide_enabled() || !mapsegs[0])
+	/* camera: lerp the vanilla origin between the last two sim frames,
+	   widen equally both sides, slide at map edges */
+	cx0 = kl_cam_prev_x;
+	cy0 = kl_cam_prev_y;
+	cx1 = kl_cam_cur_x;
+	cy1 = kl_cam_cur_y;
+	if (cx1 - cx0 > 64 || cx0 - cx1 > 64 || cy1 - cy0 > 64 || cy0 - cy1 > 64)
 	{
-		BE_ST_KL_WideOff();
-		return;
+		cx0 = cx1; /* teleport/level start: snap */
+		cy0 = cy1;
 	}
-
-	/* camera: vanilla origin, widened equally both sides, slid at edges */
-	camx = (long)(originxglobal >> 4) - (KL_COMP_W - 320) / 2;
-	camy = (long)(originyglobal >> 4);
+	camx = cx0 + ((cx1 - cx0) * alpha256 >> 8) - (KL_COMP_W - 320) / 2;
+	camy = cy0 + ((cy1 - cy0) * alpha256 >> 8);
 	maxcamx = (long)mapwidth * 16 - KL_COMP_W;
 	if (camx > maxcamx)
 		camx = maxcamx;
 	if (camx < 0)
 		camx = 0;
 
-	/* background + masked foreground context, sprites between priorities
-	   as the engine documents: planes go 0,1,2,MTILES,3 */
 	tx0 = (int)(camx >> 4);
 	ty0 = (int)(camy >> 4);
 	px = -(int)(camx & 15);
@@ -358,13 +387,76 @@ void KL_CompRefresh(void)
 					}
 				}
 		}
-		kl_draw_sprites(pri, camx, camy);
+		kl_draw_sprites(pri, camx, camy, alpha256);
 	}
 
 	BE_ST_KL_WideFrame(kl_frame, KL_COMP_W, KL_COMP_H);
 }
 
+/* present-time recompose; called by the backend whenever it refreshes the
+ * host display while the wide view is live.  Interpolates on the monotonic
+ * ms clock -- NEVER composes a fresh frame at alpha=1 and then rewinds (the
+ * "everything jitters" sawtooth the Keen 1-3 port hit). */
+int KL_CompPresentTick(void)
+{
+	uint32_t now;
+	long alpha256;
+
+	if (!kl_have_frame || !kl_wide_enabled() || !mapsegs[0])
+		return 0;
+	now = BEL_ST_GetTicksMS();
+	if (kl_frame_ms == 0)
+		alpha256 = 256;
+	else
+	{
+		alpha256 = (long)((now - kl_refresh_ms) * 256 / kl_frame_ms);
+		if (alpha256 < 0)
+			alpha256 = 0;
+		if (alpha256 > 256)
+			alpha256 = 256;
+	}
+	kl_compose(alpha256);
+	return 1;
+}
+
+void KL_CompRefresh(void)
+{
+	int i;
+
+	if (!kl_wide_enabled() || !mapsegs[0])
+	{
+		BE_ST_KL_WideOff();
+		return;
+	}
+
+	/* rotate snapshots: the placements of this frame are complete */
+	kl_cam_prev_x = kl_cam_cur_x;
+	kl_cam_prev_y = kl_cam_cur_y;
+	kl_cam_cur_x = (long)(originxglobal >> 4);
+	kl_cam_cur_y = (long)(originyglobal >> 4);
+	for (i = 0; i < KL_MAXSPR; i++)
+		if (kl_spr[i].live)
+		{
+			kl_spr[i].prevx = kl_spr[i].showx;
+			kl_spr[i].prevy = kl_spr[i].showy;
+			kl_spr[i].showx = kl_spr[i].worldx;
+			kl_spr[i].showy = kl_spr[i].worldy;
+		}
+	kl_refresh_ms = BEL_ST_GetTicksMS();
+	kl_frame_ms = (uint32_t)(tics > 0 ? tics : 1) * 1000 / 70;
+	if (!kl_have_frame)
+	{
+		/* first frame: no previous state to glide from */
+		kl_cam_prev_x = kl_cam_cur_x;
+		kl_cam_prev_y = kl_cam_cur_y;
+		kl_have_frame = 1;
+	}
+
+	KL_CompPresentTick();
+}
+
 void KL_CompStandDown(void)
 {
+	kl_have_frame = 0;
 	BE_ST_KL_WideOff();
 }

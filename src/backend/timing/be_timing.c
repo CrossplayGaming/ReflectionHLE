@@ -133,6 +133,22 @@ void BE_ST_SetTimer(uint16_t rateVal)
 	BE_ST_UnlockAudioRecursively(); // RECURSIVE unlock
 }
 
+/* [KeenLauncher] While the Keen Dreams wide view is live, the waits present
+   every few ms so interpolation is smooth; otherwise keep the sparse 100ms
+   keep-alive cadence.  (Weak default for the other games' targets.) */
+#ifdef REFKEEN_VER_KDREAMS
+bool BE_ST_KL_WideActive(void);
+static inline int BEL_ST_KLRefreshInterval(void)
+{
+	return BE_ST_KL_WideActive() ? 4 : 100;
+}
+#else
+static inline int BEL_ST_KLRefreshInterval(void)
+{
+	return 100;
+}
+#endif
+
 static void BEL_ST_TicksDelayWithOffset(int sdltickstowait)
 {
 	if (sdltickstowait <= (int32_t)g_sdlTicksOffset)
@@ -157,7 +173,7 @@ static void BEL_ST_TicksDelayWithOffset(int sdltickstowait)
 		currSdlTicks = BEL_ST_GetTicksMS();
 		// Refresh graphics from time to time in case a part of the window is overridden by anything,
 		// like the Steam Overlay, but also check if we should refresh the graphics more often
-		if (g_sdlForceGfxControlUiRefresh || (currSdlTicks - lastRefreshTime > 100))
+		if (g_sdlForceGfxControlUiRefresh || (currSdlTicks - lastRefreshTime > BEL_ST_KLRefreshInterval()))
 		{
 			BEL_ST_UpdateHostDisplay();
 			currSdlTicks = BEL_ST_GetTicksMS(); // Just be a bit more pedantic
@@ -262,7 +278,7 @@ void BE_ST_TimerIntCallsDelayWithOffset(int nCalls)
 		currSdlTicks = BEL_ST_GetTicksMS();
 		// Refresh graphics from time to time in case a part of the window is overridden by anything,
 		// like the Steam Overlay, but also check if we should refresh the graphics more often
-		if (g_sdlForceGfxControlUiRefresh || (currSdlTicks - lastRefreshTime > 100))
+		if (g_sdlForceGfxControlUiRefresh || (currSdlTicks - lastRefreshTime > BEL_ST_KLRefreshInterval()))
 		{
 			BEL_ST_UpdateHostDisplay();
 			currSdlTicks = BEL_ST_GetTicksMS(); // Just be a bit more pedantic

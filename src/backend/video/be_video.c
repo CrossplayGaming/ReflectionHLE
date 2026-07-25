@@ -750,6 +750,11 @@ void BE_ST_KL_WideFrame(const uint8_t *pix, int w, int h)
 	g_sdlDoRefreshGfxOutput = true;
 }
 
+bool BE_ST_KL_WideActive(void)
+{
+	return g_klWideOn;
+}
+
 void BE_ST_KL_WideOff(void)
 {
 	if (g_klWideOn)
@@ -854,10 +859,13 @@ void BEL_ST_UpdateHostDisplay(void)
 		g_sdlForceGfxControlUiRefresh = true;
 
 #ifdef REFKEEN_VER_KDREAMS
-	/* [KeenLauncher] wide gameplay frame takes over the whole present */
+	/* [KeenLauncher] wide gameplay frame takes over the whole present.
+	   Every host refresh recomposes at the current interpolation alpha, so
+	   camera and sprites glide between sim frames. */
 	if (g_klWideOn && g_sdlScreenMode != 3)
 	{
-		if (g_sdlDoRefreshGfxOutput || g_sdlForceGfxControlUiRefresh)
+		int KL_CompPresentTick(void);
+		if (KL_CompPresentTick())
 		{
 			g_sdlDoRefreshGfxOutput = false;
 			BEL_ST_KL_PresentWide();
