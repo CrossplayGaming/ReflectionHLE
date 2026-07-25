@@ -429,6 +429,25 @@ void BEL_ST_SetGfxOutputRects(bool allowResize)
 		}
 	}
 
+#ifdef REFKEEN_VER_KDREAMS
+	/* [KeenLauncher] reserve 16 of 240 game px per side so the bevel frame
+	   and a sliver of backdrop surround the classic screens on ALL sides
+	   (matches the Keen 1-3 / Omnispeak builds).  Fill mode opts out. */
+	if (g_refKeenCfg.scaleType == SCALE_ASPECT && !g_sdlIsSoftwareRendered)
+	{
+		g_sdlAspectCorrectionBorderedRect.w = g_sdlAspectCorrectionBorderedRect.w * 240 / 272;
+		g_sdlAspectCorrectionBorderedRect.h = g_sdlAspectCorrectionBorderedRect.h * 240 / 272;
+		g_sdlAspectCorrectionBorderedRect.x = (winWidth - g_sdlAspectCorrectionBorderedRect.w) / 2;
+		g_sdlAspectCorrectionBorderedRect.y = (winHeight - g_sdlAspectCorrectionBorderedRect.h) / 2;
+		g_sdlAspectCorrectionRect.x = g_sdlAspectCorrectionBorderedRect.x +
+			g_sdlAspectCorrectionBorderedRect.w * srcBorderLeft / srcBorderedWidth;
+		g_sdlAspectCorrectionRect.y = g_sdlAspectCorrectionBorderedRect.y +
+			g_sdlAspectCorrectionBorderedRect.h * srcBorderTop / srcBorderedHeight;
+		g_sdlAspectCorrectionRect.w = g_sdlAspectCorrectionBorderedRect.w * srcWidth / srcBorderedWidth;
+		g_sdlAspectCorrectionRect.h = g_sdlAspectCorrectionBorderedRect.h * srcHeight / srcBorderedHeight;
+	}
+#endif
+
 	int minWinDim = (winWidth >= winHeight) ? winHeight : winWidth;
 
 	BEL_ST_SetCommonUIRects();
@@ -739,6 +758,88 @@ static bool g_klWideOn;
 static BE_ST_Texture *g_klWideTexture, *g_klWideTargetTexture;
 static int g_klWideTexW, g_klWideTexH, g_klWideScale;
 
+/* 64x64 tiled backdrop pattern (EGA indices) built by the game-side
+ * compositor from the episode's own tileset; drawn behind/around the
+ * content with the collection's five-layer pixel-art bevel frame. */
+static uint8_t g_klBackdrop[64 * 64];
+static bool g_klBackdropSet;
+static BE_ST_Texture *g_klBackdropTexture;
+
+void BE_ST_KL_SetBackdrop(const uint8_t *pix64)
+{
+	memcpy(g_klBackdrop, pix64, sizeof(g_klBackdrop));
+	g_klBackdropSet = true;
+}
+
+/* the frame's five layers, drawn OUTWARD from the content rect; every layer
+ * is a whole number of on-screen game pixels (identical recipe to the
+ * Keen 1-3 port and the Omnispeak fork) */
+static void BEL_ST_KL_FrameEdges(BE_ST_Rect r, int t,
+                                 uint32_t tl, uint32_t br)
+{
+	BE_ST_Rect e;
+
+	e.x = r.x - t; e.y = r.y - t; e.w = r.w + 2 * t; e.h = t;
+	BEL_ST_SetDrawColor(tl); BEL_ST_RenderFill(&e);          /* top    */
+	e.y = r.y - t; e.h = r.h + 2 * t; e.w = t;
+	BEL_ST_SetDrawColor(tl); BEL_ST_RenderFill(&e);          /* left   */
+	e.x = r.x - t; e.y = r.y + r.h; e.w = r.w + 2 * t; e.h = t;
+	BEL_ST_SetDrawColor(br); BEL_ST_RenderFill(&e);          /* bottom */
+	e.x = r.x + r.w; e.y = r.y - t; e.w = t; e.h = r.h + 2 * t;
+	BEL_ST_SetDrawColor(br); BEL_ST_RenderFill(&e);          /* right  */
+}
+
+static void BEL_ST_KL_DrawBackdropAndFrame(const BE_ST_Rect *content,
+                                           int scale)
+{
+	int outW, outH, x, y, step;
+	BE_ST_Rect r;
+
+	if (!g_klBackdropSet)
+		return;
+	if (scale < 1)
+		scale = 1;
+	BEL_ST_GetWindowSizeInPixels(&outW, &outH);
+
+	/* tile the pattern at game-pixel zoom (reads as game tiles) */
+	if (!g_klBackdropTexture)
+		BEL_ST_CreateTextureWrapper(&g_klBackdropTexture, 64, 64, false, false);
+	if (g_klBackdropTexture)
+	{
+		int pitchPix, row, col;
+		uint32_t *px = (uint32_t *)BEL_ST_LockTexture(g_klBackdropTexture, &pitchPix);
+		if (px)
+		{
+			pitchPix /= 4;
+			for (row = 0; row < 64; row++)
+				for (col = 0; col < 64; col++)
+					px[row * pitchPix + col] =
+						g_sdlEGACurrBGRAPalette[g_klBackdrop[row * 64 + col] & 15];
+			BEL_ST_UnlockTexture(g_klBackdropTexture);
+		}
+		step = 64 * scale;
+		for (y = 0; y < outH; y += step)
+			for (x = 0; x < outW; x += step)
+			{
+				BE_ST_Rect dst = {x, y, step, step};
+				BEL_ST_RenderFromTexture(g_klBackdropTexture, &dst);
+			}
+	}
+
+	/* seam px black / inset bevel 2px dark-TL bright-BR / face 4px brown /
+	   raised bevel 2px bright-TL dark-BR / outline px black */
+	r = *content;
+	BEL_ST_KL_FrameEdges(r, scale, 0xFF000000, 0xFF000000);
+	r.x -= scale; r.y -= scale; r.w += 2 * scale; r.h += 2 * scale;
+	BEL_ST_KL_FrameEdges(r, 2 * scale, 0xFF555555, 0xFFFFFF55);
+	r.x -= 2 * scale; r.y -= 2 * scale; r.w += 4 * scale; r.h += 4 * scale;
+	BEL_ST_KL_FrameEdges(r, 4 * scale, 0xFFAA5500, 0xFFAA5500);
+	r.x -= 4 * scale; r.y -= 4 * scale; r.w += 8 * scale; r.h += 8 * scale;
+	BEL_ST_KL_FrameEdges(r, 2 * scale, 0xFFFFFF55, 0xFF555555);
+	r.x -= 2 * scale; r.y -= 2 * scale; r.w += 4 * scale; r.h += 4 * scale;
+	BEL_ST_KL_FrameEdges(r, scale, 0xFF000000, 0xFF000000);
+}
+
 void BE_ST_KL_WideFrame(const uint8_t *pix, int w, int h)
 {
 	if (w <= 0 || h <= 0 || w * h > (int)sizeof(g_klWidePix))
@@ -833,6 +934,7 @@ static bool BEL_ST_KL_PresentWide(void)
 
 	BEL_ST_SetDrawColor(0xFF000000);
 	BEL_ST_RenderClear();
+	BEL_ST_KL_DrawBackdropAndFrame(&dst, dst.h / 240);
 	if (g_klWideTargetTexture && BEL_ST_SetRenderTarget(g_klWideTargetTexture))
 	{
 		BEL_ST_RenderFromTexture(g_klWideTexture, NULL);
@@ -885,8 +987,20 @@ void BEL_ST_UpdateHostDisplay(void)
 
 	BEL_ST_SetDrawColor(0xFF000000);
 	BEL_ST_RenderClear();
-	BEL_ST_SetDrawColor(g_sdlEGALastBGRABorderColor);
-	BEL_ST_RenderFill(&g_sdlAspectCorrectionBorderedRect);
+#ifdef REFKEEN_VER_KDREAMS
+	/* [KeenLauncher] classic 4:3 screens (menus, control panel, text
+	   screens) get the collection's tiled backdrop + bevel frame in place
+	   of the flat border color; the content rect was inset in
+	   BEL_ST_SetGfxOutputRects so the frame surrounds ALL four sides */
+	if (g_klBackdropSet)
+		BEL_ST_KL_DrawBackdropAndFrame(&g_sdlAspectCorrectionRect,
+			g_sdlAspectCorrectionRect.h / ((g_sdlScreenMode == 3) ? 480 : 240));
+	else
+#endif
+	{
+		BEL_ST_SetDrawColor(g_sdlEGALastBGRABorderColor);
+		BEL_ST_RenderFill(&g_sdlAspectCorrectionBorderedRect);
+	}
 	if (g_sdlDoAbsMouseMotion && g_sdlControllerMappingActualCurr->absoluteFingerPositioning)
 	{
 		BEL_ST_SetDrawColor(0xFFFF0000);

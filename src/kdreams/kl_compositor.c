@@ -3,6 +3,7 @@
 #include "kd_def.h"
 #include "kl_compositor.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -534,6 +535,100 @@ int KL_CompPresentTick(void)
 	return 1;
 }
 
+/* Backdrop: pick a dark, lightly-textured tile from the episode's OWN
+ * tileset by measurement (mean luminance + spread -- the same scoring the
+ * Keen 1-3 port used; eyeballing picks garish tiles), then scatter it into
+ * a 64x64 pattern (tile in 5 of 16 cells, mask 0x8412) so it reads as a
+ * starfield rather than wallpaper. */
+static void kl_send_backdrop(void)
+{
+	static const uint8_t luma[16] = {
+		0, 20, 35, 40, 30, 35, 45, 65,
+		40, 60, 75, 80, 70, 75, 90, 100
+	};
+	void BE_ST_KL_SetBackdrop(const uint8_t *pix64);
+	static int sent;
+	long best = -1, bestscore = 0;
+	id0_unsigned_t t;
+	uint8_t pattern[64 * 64];
+	int cx, cy, x, y;
+
+	if (sent)
+		return;
+	/* KL_BACKDROP=<tile> overrides the measured pick (-1 = plain black) */
+	{
+		const char *e = getenv("KL_BACKDROP");
+		if (e)
+		{
+			long v = atol(e);
+			if (v < 0)
+			{
+				sent = 1;
+				return;
+			}
+			if (v > 0 && v < (long)NUMTILE16 && kl_decode_tile((id0_unsigned_t)v))
+				best = v;
+		}
+	}
+	if (best < 0)
+	for (t = 1; t < NUMTILE16; t++)
+	{
+		const uint8_t *til = kl_decode_tile(t);
+		long mean = 0, var = 0, i2, d;
+
+		if (!til)
+			continue;
+		for (i2 = 0; i2 < 256; i2++)
+			mean += luma[til[i2] & 15];
+		mean /= 256;
+		for (i2 = 0; i2 < 256; i2++)
+		{
+			d = luma[til[i2] & 15] - mean;
+			var += d * d;
+		}
+		var /= 256;
+		{
+			long sd = 0;
+			while (sd * sd < var)
+				sd++;
+			if (getenv("KL_TRACE") && mean < 45 && sd >= 2)
+				fprintf(stderr, "KL cand: tile %u mean %ld sd %ld\n",
+				        t, mean, sd);
+			if (mean < 40 && sd >= 2 && sd <= 35)
+			{
+				long score = mean + (sd > 11 ? sd - 11 : 11 - sd);
+				if (best < 0 || score < bestscore)
+				{
+					best = (long)t;
+					bestscore = score;
+				}
+			}
+		}
+	}
+	if (getenv("KL_TRACE"))
+		fprintf(stderr, "KL backdrop: tile %ld score %ld\n", best, bestscore);
+	if (best < 0)
+		return;
+	memset(pattern, 0, sizeof(pattern));
+	for (cy = 0; cy < 4; cy++)
+		for (cx = 0; cx < 4; cx++)
+		{
+			const uint8_t *til;
+
+			if (!((0x8412 >> (cy * 4 + cx)) & 1))
+				continue;
+			til = kl_decode_tile((id0_unsigned_t)best);
+			if (!til)
+				continue;
+			for (y = 0; y < 16; y++)
+				for (x = 0; x < 16; x++)
+					pattern[(cy * 16 + y) * 64 + cx * 16 + x] =
+						til[y * 16 + x];
+		}
+	BE_ST_KL_SetBackdrop(pattern);
+	sent = 1;
+}
+
 void KL_CompRefresh(void)
 {
 	int i;
@@ -543,6 +638,8 @@ void KL_CompRefresh(void)
 		BE_ST_KL_WideOff();
 		return;
 	}
+
+	kl_send_backdrop();
 
 	/* rotate snapshots: the placements of this frame are complete */
 	kl_cam_prev_x = kl_cam_cur_x;
