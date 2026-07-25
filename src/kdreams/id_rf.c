@@ -1408,6 +1408,17 @@ linknewspot:
 =====================
 */
 
+/* KeenLauncher compositor: kd_play can't see spritelisttype/spritearray
+   (they're local to this file), so this helper does the index math here */
+void KL_GhostSpriteHelper(void *owner, void *sprite)
+{
+	void KL_GhostFromSprite(void *, void *, void *, size_t);
+
+	if (sprite)
+		KL_GhostFromSprite(owner, sprite, spritearray,
+		                   sizeof(spritearray[0]));
+}
+
 void RF_RemoveSprite_EGA (void **user)
 {
 	spritelisttype	*sprite,*next;

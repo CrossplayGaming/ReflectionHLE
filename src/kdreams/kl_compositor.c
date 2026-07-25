@@ -61,6 +61,59 @@ void KL_DropSprite(void *user, void *arraybase, size_t elemsize)
 		kl_spr[idx].live = 0;
 }
 
+/* Deactivation ghosts, keyed by the OBJECT (sprite slots get reused): the
+ * engine erases sprites of objects leaving the vanilla activation window,
+ * which in the wide view happens on screen and read as edge pop-in.  The
+ * ghost keeps composing the last placement frozen at the object's true sim
+ * position until the object reactivates or is removed. */
+typedef struct
+{
+	void *owner;
+	id0_unsigned_t wx, wy, grseg;
+	id0_int_t priority;
+	int used;
+} KL_Ghost;
+
+#define KL_MAXGHOST 128
+static KL_Ghost kl_ghost[KL_MAXGHOST];
+
+void KL_GhostFromSprite(void *owner, void *user, void *arraybase,
+                        size_t elemsize)
+{
+	size_t idx = ((char *)user - (char *)arraybase) / elemsize;
+	int i, slot = -1;
+
+	if (idx >= KL_MAXSPR || !kl_spr[idx].live || !owner)
+		return;
+	for (i = 0; i < KL_MAXGHOST; i++)
+	{
+		if (kl_ghost[i].used && kl_ghost[i].owner == owner)
+		{
+			slot = i;
+			break;
+		}
+		if (!kl_ghost[i].used && slot < 0)
+			slot = i;
+	}
+	if (slot < 0)
+		return;
+	kl_ghost[slot].owner = owner;
+	kl_ghost[slot].wx = kl_spr[idx].showx;
+	kl_ghost[slot].wy = kl_spr[idx].showy;
+	kl_ghost[slot].grseg = kl_spr[idx].grseg;
+	kl_ghost[slot].priority = kl_spr[idx].priority;
+	kl_ghost[slot].used = 1;
+}
+
+void KL_DropGhostObj(void *owner)
+{
+	int i;
+
+	for (i = 0; i < KL_MAXGHOST; i++)
+		if (kl_ghost[i].used && kl_ghost[i].owner == owner)
+			kl_ghost[i].used = 0;
+}
+
 /* ---------------------------------------------------------------- decode */
 
 /* Planar EGA -> chunky 8bpp caches.  Tiles are 4 planes of 32 bytes;
@@ -212,6 +265,7 @@ void KL_CompReset(void)
 	int i;
 
 	memset(kl_spr, 0, sizeof(kl_spr));
+	memset(kl_ghost, 0, sizeof(kl_ghost));
 	kl_have_frame = 0;
 	/* graphics chunks may have been purged/reloaded on level change */
 	for (i = 0; i < (int)NUMTILE16; i++)
@@ -245,6 +299,40 @@ static int kl_wide_enabled(void)
 		cached = e ? (atoi(e) != 0) : 1;
 	}
 	return cached;
+}
+
+static void kl_draw_ghosts(int priority, long camx, long camy)
+{
+	int i, x, y;
+
+	for (i = 0; i < KL_MAXGHOST; i++)
+	{
+		const KL_SprImg *img;
+		long sx, sy;
+
+		if (!kl_ghost[i].used || kl_ghost[i].priority != priority)
+			continue;
+		img = kl_decode_sprite(kl_ghost[i].grseg);
+		if (!img)
+			continue;
+		sx = (long)(kl_ghost[i].wx >> 4) - camx;
+		sy = (long)(kl_ghost[i].wy >> 4) - camy;
+		for (y = 0; y < img->h; y++)
+		{
+			long dy = sy + y;
+			if (dy < 0 || dy >= KL_COMP_H)
+				continue;
+			for (x = 0; x < img->w; x++)
+			{
+				long dx = sx + x;
+				if (dx < 0 || dx >= KL_COMP_W)
+					continue;
+				if (img->pix[(y * img->w + x) * 2 + 1])
+					kl_frame[dy * KL_COMP_W + dx] =
+						img->pix[(y * img->w + x) * 2];
+			}
+		}
+	}
 }
 
 static void kl_draw_sprites(int priority, long camx, long camy, long alpha256)
@@ -346,6 +434,32 @@ static void kl_compose(long alpha256)
 					kl_frame[dy * KL_COMP_W + dx] = til[y * 16 + x];
 				}
 			}
+			/* Foreground tiles WITHOUT the INTILE high bit belong to the
+			   scenery UNDER the sprites (bridges Keen walks on); only
+			   tiles with the bit go over sprites, exactly as the engine's
+			   RFL_MaskForegroundTiles decides. */
+			{
+				id0_unsigned_t fnum = mapsegs[1][my * mapwidth + mx];
+				const uint8_t *ftl;
+
+				if (fnum && !(tinf[fnum + INTILE] & 0x80) &&
+				    (ftl = kl_decode_mtile(fnum)) != NULL)
+					for (y = 0; y < 16; y++)
+					{
+						int dy = oy + y;
+						if (dy < 0 || dy >= KL_COMP_H)
+							continue;
+						for (x = 0; x < 16; x++)
+						{
+							int dx = ox + x;
+							if (dx < 0 || dx >= KL_COMP_W)
+								continue;
+							if (ftl[(y * 16 + x) * 2 + 1])
+								kl_frame[dy * KL_COMP_W + dx] =
+									ftl[(y * 16 + x) * 2];
+						}
+					}
+			}
 		}
 
 	for (pri = 0; pri < PRIORITIES; pri++)
@@ -365,7 +479,7 @@ static void kl_compose(long alpha256)
 					    my >= (int)mapheight)
 						continue;
 					fnum = mapsegs[1][my * mapwidth + mx];
-					if (!fnum)
+					if (!fnum || !(tinf[fnum + INTILE] & 0x80))
 						continue;
 					til = kl_decode_mtile(fnum);
 					if (!til)
@@ -387,6 +501,7 @@ static void kl_compose(long alpha256)
 					}
 				}
 		}
+		kl_draw_ghosts(pri, camx, camy);
 		kl_draw_sprites(pri, camx, camy, alpha256);
 	}
 

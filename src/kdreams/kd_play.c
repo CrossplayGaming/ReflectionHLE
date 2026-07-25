@@ -431,6 +431,12 @@ void GetNewObj (id0_boolean_t usedummy)
 
 void RemoveObj (objtype *gone)
 {
+	{
+		/* KeenLauncher compositor: object gone for real, no ghost */
+		void KL_DropGhostObj(void *);
+		KL_DropGhostObj(gone);
+	}
+
 	if (gone == player)
 		Quit ("RemoveObj: Tried to remove the player!");
 
@@ -1568,6 +1574,11 @@ void PlayLoop (void)
 			{
 				obj->needtoreact = true;
 				obj->active = yes;
+				{
+					/* KeenLauncher compositor: reactivated, drop its ghost */
+					void KL_DropGhostObj(void *);
+					KL_DropGhostObj(obj);
+				}
 			}
 
 			if (obj->active)
@@ -1585,6 +1596,13 @@ void PlayLoop (void)
 				{
 					if (US_RndT()<tics)				// let them get a random dist
 					{
+						{
+							/* KeenLauncher compositor: keep a frozen ghost at
+							   the object's true sim position -- this boundary
+							   is on screen in the wide view */
+							void KL_GhostSpriteHelper(void *, void *);
+							KL_GhostSpriteHelper(obj, obj->sprite);
+						}
 						RF_RemoveSprite (&obj->sprite);
 						obj->active = no;
 					}
