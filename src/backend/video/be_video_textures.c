@@ -36,6 +36,8 @@
 
 #include <stdlib.h>
 
+extern int g_sdlEffectiveScaleFactor; // [KeenLauncher] see be_video.c
+
 // These might be implementation-dependent
 BE_ST_Texture *BEL_ST_CreateARGBTexture(int w, int h, bool isTarget, bool isLinear);
 void BEL_ST_DestroyTexture(BE_ST_Texture *texture);
@@ -47,7 +49,9 @@ void BEL_ST_RecreateMainTextures(void)
 	if (g_sdlTargetTexture)
 		BEL_ST_DestroyTextureWrapper(&g_sdlTargetTexture);
 	// Try using render target
-	if ((g_refKeenCfg.scaleFactor > 1) && g_refKeenCfg.isBilinear)
+	// [KeenLauncher] the prescale multiple is the auto-cover factor computed
+	// in BEL_ST_SetGfxOutputRects, not the raw cfg value
+	if ((g_sdlEffectiveScaleFactor > 1) && g_refKeenCfg.isBilinear)
 	{
 		BEL_ST_CreateTextureWrapper(&g_sdlTexture, g_sdlTexWidth, g_sdlTexHeight, false, false);
 		if (!g_sdlTexture)
@@ -57,7 +61,7 @@ void BEL_ST_RecreateMainTextures(void)
 			exit(0);
 		}
 		// Try, if we fail then simply don't use this
-		BEL_ST_CreateTextureWrapper(&g_sdlTargetTexture, g_sdlTexWidth*g_refKeenCfg.scaleFactor, g_sdlTexHeight*g_refKeenCfg.scaleFactor, true, true);
+		BEL_ST_CreateTextureWrapper(&g_sdlTargetTexture, g_sdlTexWidth*g_sdlEffectiveScaleFactor, g_sdlTexHeight*g_sdlEffectiveScaleFactor, true, true);
 		if (g_sdlTargetTexture)
 			BE_Cross_LogMessage(BE_LOG_MSG_NORMAL, "BEL_ST_RecreateMainTextures: Target texture created successfully\n");
 		else

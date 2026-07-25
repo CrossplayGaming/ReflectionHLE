@@ -268,6 +268,9 @@ bool g_sdlDoAbsMouseMotion;
 int g_sdlHostVirtualMouseCursorState[2];
 static int g_sdlHostVirtualMouseCursorSideLen;
 
+// [KeenLauncher] auto-cover prescale factor (>= cfg scaleFactor); see below
+int g_sdlEffectiveScaleFactor = 1;
+
 void BEL_ST_SetGfxOutputRects(bool allowResize)
 {
 	int srcWidth = g_sdlTexWidth;
@@ -398,6 +401,33 @@ void BEL_ST_SetGfxOutputRects(bool allowResize)
 	g_sdlAspectCorrectionRect.y = g_sdlAspectCorrectionBorderedRect.y + g_sdlAspectCorrectionBorderedRect.h*srcBorderTop/srcBorderedHeight;
 	g_sdlAspectCorrectionRect.w = g_sdlAspectCorrectionBorderedRect.w*srcWidth/srcBorderedWidth;
 	g_sdlAspectCorrectionRect.h = g_sdlAspectCorrectionBorderedRect.h*srcHeight/srcBorderedHeight;
+
+	// [KeenLauncher] Crisp pixels: pick the nearest-neighbour prescale so it
+	// COVERS the output rect, making the final (bilinear) blit a slight
+	// DOWNscale instead of a blurry upscale.  Same recipe as the rest of the
+	// collection (Omnispeak fork / Keen 1-3 port): integer prescale rounded
+	// up, then a gentle linear fit.  The cfg scaleFactor acts as a floor.
+	{
+		int needW = (g_sdlTexWidth > 0)
+			? (g_sdlAspectCorrectionRect.w + g_sdlTexWidth - 1) / g_sdlTexWidth : 1;
+		int needH = (g_sdlTexHeight > 0)
+			? (g_sdlAspectCorrectionRect.h + g_sdlTexHeight - 1) / g_sdlTexHeight : 1;
+		int need = (needW > needH) ? needW : needH;
+
+		if (need < g_refKeenCfg.scaleFactor)
+			need = g_refKeenCfg.scaleFactor;
+		if (need < 1)
+			need = 1;
+		if (need > 16) // bound the render-target size
+			need = 16;
+		if (need != g_sdlEffectiveScaleFactor)
+		{
+			g_sdlEffectiveScaleFactor = need;
+			// prescale target must match: rebuild textures if they exist
+			if (g_sdlTexture)
+				BEL_ST_RecreateMainTextures();
+		}
+	}
 
 	int minWinDim = (winWidth >= winHeight) ? winHeight : winWidth;
 
