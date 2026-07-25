@@ -204,6 +204,12 @@ typedef struct
 static KL_SprImg kl_sprimg[KL_SPRIMG_MAX];
 static int kl_nsprimg;
 
+/* The score box is special twice over: the game updates its digits by
+ * writing INTO the sprite chunk (so it must never be cached), and it
+ * follows the vanilla camera (so it must be pinned, not world-placed). */
+static KL_SprImg kl_scorebox_img;
+static uint8_t kl_scorebox_pix[64 * 64 * 2];
+
 static KL_SprImg *kl_decode_sprite(id0_unsigned_t grseg)
 {
 	const spritetype_ega *block;
@@ -212,9 +218,12 @@ static KL_SprImg *kl_decode_sprite(id0_unsigned_t grseg)
 	KL_SprImg *img;
 	int wbytes, h, planesize, p, row, b, bit, i;
 
-	for (i = 0; i < kl_nsprimg; i++)
-		if (kl_sprimg[i].grseg == grseg)
-			return &kl_sprimg[i];
+	int nocache = (grseg == SCOREBOXSPR);
+
+	if (!nocache)
+		for (i = 0; i < kl_nsprimg; i++)
+			if (kl_sprimg[i].grseg == grseg)
+				return &kl_sprimg[i];
 	if (kl_nsprimg >= KL_SPRIMG_MAX)
 	{
 		/* cache full (level change churn): drop everything, re-fill */
@@ -231,13 +240,27 @@ static KL_SprImg *kl_decode_sprite(id0_unsigned_t grseg)
 	planesize = block->planesize[0];
 	if (wbytes <= 0 || h <= 0 || planesize < wbytes * h)
 		return NULL;
-	img = &kl_sprimg[kl_nsprimg];
-	img->grseg = grseg;
-	img->w = wbytes * 8;
-	img->h = h;
-	img->pix = (uint8_t *)calloc(1, (size_t)img->w * h * 2);
-	if (!img->pix)
-		return NULL;
+	if (nocache)
+	{
+		if ((size_t)(wbytes * 8) * h * 2 > sizeof(kl_scorebox_pix))
+			return NULL;
+		img = &kl_scorebox_img;
+		img->grseg = grseg;
+		img->w = wbytes * 8;
+		img->h = h;
+		img->pix = kl_scorebox_pix;
+		memset(kl_scorebox_pix, 0, (size_t)img->w * h * 2);
+	}
+	else
+	{
+		img = &kl_sprimg[kl_nsprimg];
+		img->grseg = grseg;
+		img->w = wbytes * 8;
+		img->h = h;
+		img->pix = (uint8_t *)calloc(1, (size_t)img->w * h * 2);
+		if (!img->pix)
+			return NULL;
+	}
 	data = (const uint8_t *)block + block->sourceoffset[0];
 	/* mask plane first: 0 bits are opaque */
 	for (row = 0; row < h; row++)
@@ -257,7 +280,8 @@ static KL_SprImg *kl_decode_sprite(id0_unsigned_t grseg)
 					if (byte & (0x80 >> bit))
 						img->pix[(row * img->w + b * 8 + bit) * 2] |= 1 << p;
 			}
-	kl_nsprimg++;
+	if (!nocache)
+		kl_nsprimg++;
 	return img;
 }
 
@@ -355,6 +379,17 @@ static void kl_draw_sprites(int priority, long camx, long camy, long alpha256)
 		img = kl_decode_sprite(kl_spr[i].grseg);
 		if (!img)
 			continue;
+		if (kl_spr[i].grseg == SCOREBOXSPR)
+		{
+			/* pinned HUD: place relative to the vanilla camera of the
+			   current sim frame -- immune to the wide camera's widening,
+			   clamping and interpolation (it followed the clamp before,
+			   which is what made it drift at level edges) */
+			sx = (long)(kl_spr[i].showx >> 4) - kl_cam_cur_x;
+			sy = (long)(kl_spr[i].showy >> 4) - kl_cam_cur_y;
+		}
+		else
+		{
 		/* lerp in whole world pixels; big jumps (teleports) snap */
 		px = (long)(kl_spr[i].prevx >> 4);
 		py = (long)(kl_spr[i].prevy >> 4);
@@ -367,6 +402,7 @@ static void kl_draw_sprites(int priority, long camx, long camy, long alpha256)
 		}
 		sx = px + ((cx - px) * alpha256 >> 8) - camx;
 		sy = py + ((cy - py) * alpha256 >> 8) - camy;
+		}
 		for (y = 0; y < img->h; y++)
 		{
 			long dy = sy + y;
