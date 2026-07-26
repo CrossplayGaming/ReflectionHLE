@@ -126,6 +126,10 @@ void
 GameOver (void)
 {
 	VW_InitDoubleBuffer ();
+	{
+		void KL_OverlayNext(void);
+		KL_OverlayNext();
+	}
 	US_CenterWindow (16,3);
 
 	US_PrintCentered("Game Over!");

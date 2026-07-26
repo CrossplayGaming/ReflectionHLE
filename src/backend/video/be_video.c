@@ -795,13 +795,14 @@ static void BEL_ST_KL_DrawBackdropAndFrame(const BE_ST_Rect *content,
 	int outW, outH, x, y, step;
 	BE_ST_Rect r;
 
-	if (!g_klBackdropSet)
-		return;
 	if (scale < 1)
 		scale = 1;
 	BEL_ST_GetWindowSizeInPixels(&outW, &outH);
 
-	/* tile the pattern at game-pixel zoom (reads as game tiles) */
+	/* tile the pattern at game-pixel zoom (reads as game tiles); before
+	   any backdrop is measured the frame still draws, on plain black */
+	if (g_klBackdropSet)
+	{
 	if (!g_klBackdropTexture)
 		BEL_ST_CreateTextureWrapper(&g_klBackdropTexture, 64, 64, false, false);
 	if (g_klBackdropTexture)
@@ -824,6 +825,7 @@ static void BEL_ST_KL_DrawBackdropAndFrame(const BE_ST_Rect *content,
 				BE_ST_Rect dst = {x, y, step, step};
 				BEL_ST_RenderFromTexture(g_klBackdropTexture, &dst);
 			}
+	}
 	}
 
 	/* seam px black / inset bevel 2px dark-TL bright-BR / face 4px brown /

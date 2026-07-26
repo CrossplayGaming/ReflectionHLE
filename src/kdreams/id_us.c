@@ -1033,6 +1033,13 @@ US_DrawWindow(id0_word_t x,id0_word_t y,id0_word_t w,id0_word_t h)
 	WindowW = w * 8;
 	WindowH = h * 8;
 
+	{
+		/* KeenLauncher: snapshot the rect for the dialog overlay; some
+		   callers (StatusWindow) shrink the Window vars while printing */
+		void KL_OverlayRect(int wx, int wy, int ww, int wh);
+		KL_OverlayRect(WindowX, WindowY, WindowW, WindowH);
+	}
+
 	PrintX = WindowX;
 	PrintY = WindowY;
 

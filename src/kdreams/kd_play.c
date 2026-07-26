@@ -1929,6 +1929,10 @@ void HandleDeath (void)
 	if (gamestate.lives < 0)
 		return;
 
+	{
+		void KL_OverlayNext(void);
+		KL_OverlayNext(); /* single window: composite over the wide frame */
+	}
 	VW_FixRefreshBuffer ();
 	US_CenterWindow (20,8);
 	PrintY += 4;

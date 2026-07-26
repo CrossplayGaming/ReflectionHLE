@@ -331,6 +331,17 @@ void KL_OverlayNext(void)
 {
 	kl_overlay_ok = 1;
 }
+
+/* rect recorded by US_DrawWindow when the dialog was actually drawn */
+static int kl_win_x, kl_win_y, kl_win_w, kl_win_h;
+
+void KL_OverlayRect(int wx, int wy, int ww, int wh)
+{
+	kl_win_x = wx;
+	kl_win_y = wy;
+	kl_win_w = ww;
+	kl_win_h = wh;
+}
 static long kl_last_camx, kl_last_camy;
 
 static uint8_t kl_frame[KL_COMP_W * KL_COMP_H];
@@ -666,8 +677,9 @@ int KL_CompPresentTick(void)
  * Keen 1-3 port used; eyeballing picks garish tiles), then scatter it into
  * a 64x64 pattern (tile in 5 of 16 cells, mask 0x8412) so it reads as a
  * starfield rather than wallpaper. */
-static void kl_send_backdrop(void)
+static void kl_send_backdrop(int provisional)
 {
+	static int sent_prov;
 	static const uint8_t luma[16] = {
 		0, 20, 35, 40, 30, 35, 45, 65,
 		40, 60, 75, 80, 70, 75, 90, 100
@@ -679,7 +691,7 @@ static void kl_send_backdrop(void)
 	uint8_t pattern[64 * 64];
 	int cx, cy, x, y;
 
-	if (sent)
+	if (sent || (provisional && sent_prov))
 		return;
 	/* KL_BACKDROP=<tile> overrides the measured pick (-1 = plain black) */
 	{
@@ -756,7 +768,12 @@ static void kl_send_backdrop(void)
 							dim[til[y * 16 + x] & 15];
 	}
 	BE_ST_KL_SetBackdrop(pattern);
-	sent = 1;
+	/* a pick measured from the TITLE map's tileset is provisional: the
+	   first real level re-measures from gameplay art and overrides it */
+	if (provisional)
+		sent_prov = 1;
+	else
+		sent = 1;
 }
 
 void KL_CompRefresh(void)
@@ -771,12 +788,16 @@ void KL_CompRefresh(void)
 	   menus. */
 	if (!kl_wide_enabled() || !mapsegs[0] || gamestate.mapon == 20)
 	{
+		/* still give the title screen and its menus the framed surround:
+		   measure a provisional backdrop from whatever tiles are loaded */
+		if (kl_wide_enabled() && mapsegs[0])
+			kl_send_backdrop(1);
 		kl_have_frame = 0;
 		BE_ST_KL_WideOff();
 		return;
 	}
 
-	kl_send_backdrop();
+	kl_send_backdrop(0);
 
 	kl_ovl_active = 0; /* a real sim frame: any dialog is gone */
 	kl_overlay_ok = 0;
@@ -890,11 +911,13 @@ void KL_CompStandDown(void)
 		BE_ST_KL_WideOff();
 		return;
 	}
-	/* capture the window (plus its 1-tile frame ring) from the page */
-	wx = (int)WindowX - 8;
-	wy = (int)WindowY - 8;
-	ww = (int)WindowW + 16;
-	wh = (int)WindowH + 16;
+	/* capture the window (plus its 1-tile frame ring) from the page,
+	   using the rect recorded at draw time -- the live Window vars may
+	   have been shrunk by the caller while printing (StatusWindow) */
+	wx = kl_win_x - 8;
+	wy = kl_win_y - 8;
+	ww = kl_win_w + 16;
+	wh = kl_win_h + 16;
 	if (wx < 0) wx = 0;
 	if (wy < 0) wy = 0;
 	if (ww > 320 - wx) ww = 320 - wx;
