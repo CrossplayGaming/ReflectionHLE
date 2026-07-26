@@ -292,6 +292,10 @@ void KL_CompReset(void)
 	memset(kl_spr, 0, sizeof(kl_spr));
 	memset(kl_ghost, 0, sizeof(kl_ghost));
 	kl_have_frame = 0;
+	/* level transition: never keep presenting the previous level's frozen
+	   wide frame through the fade -- that read as jumps and brief flashes
+	   of out-of-bounds tiles between levels */
+	BE_ST_KL_WideOff();
 	/* graphics chunks may have been purged/reloaded on level change */
 	for (i = 0; i < (int)NUMTILE16; i++)
 		if (kl_tile_cache[i])
@@ -315,6 +319,18 @@ void KL_CompReset(void)
 #define KL_OVL_MAX (320 * 200)
 static uint8_t kl_ovl[KL_OVL_MAX];
 static int kl_ovl_w, kl_ovl_h, kl_ovl_x, kl_ovl_y, kl_ovl_active;
+
+/* The dialog overlay is OPT-IN: only the port's own simple one-window
+ * dialogs (quicksave prompts, pause, status, the bind menu) request it.
+ * Complex screens like the control panel draw MANY windows -- capturing
+ * them one rect at a time mangled the panel -- so anything that has not
+ * called KL_OverlayNext() drops to the classic view instead. */
+static int kl_overlay_ok;
+
+void KL_OverlayNext(void)
+{
+	kl_overlay_ok = 1;
+}
 static long kl_last_camx, kl_last_camy;
 
 static uint8_t kl_frame[KL_COMP_W * KL_COMP_H];
@@ -747,8 +763,15 @@ void KL_CompRefresh(void)
 {
 	int i;
 
-	if (!kl_wide_enabled() || !mapsegs[0])
+	/* The TITLE SCREEN is a map in Keen Dreams (mapon 20), refreshed by the
+	   same RF machinery as gameplay -- but it is a menu context: composing
+	   it wide caused the sideways shift after load, occasional flicker, and
+	   the dialog-overlay path mangling the control panel (which draws MANY
+	   windows, not one).  Present it classic, like every other game's
+	   menus. */
+	if (!kl_wide_enabled() || !mapsegs[0] || gamestate.mapon == 20)
 	{
+		kl_have_frame = 0;
 		BE_ST_KL_WideOff();
 		return;
 	}
@@ -756,6 +779,7 @@ void KL_CompRefresh(void)
 	kl_send_backdrop();
 
 	kl_ovl_active = 0; /* a real sim frame: any dialog is gone */
+	kl_overlay_ok = 0;
 
 	/* rotate snapshots: the placements of this frame are complete */
 	kl_cam_prev_x = kl_cam_cur_x;
@@ -859,7 +883,7 @@ void KL_CompStandDown(void)
 	void BE_ST_KL_ReadWindow(int, int, int, int, uint8_t *);
 	int wx, wy, ww, wh;
 
-	if (!kl_have_frame || !kl_wide_enabled())
+	if (!kl_have_frame || !kl_wide_enabled() || !kl_overlay_ok)
 	{
 		/* no live wide frame (menus outside gameplay): classic view */
 		kl_have_frame = 0;

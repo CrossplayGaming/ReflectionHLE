@@ -217,6 +217,10 @@ void CheckKeys (void)
 //
 	if ((Keyboard[sc_Space] && !g_keybind_used_stats) || g_binding_value_stats)
 	{
+		{
+			void KL_OverlayNext(void);
+			KL_OverlayNext();
+		}
 		StatusWindow ();
 		IN_ClearKeysDown();
 		RF_ForceRefresh();
@@ -228,6 +232,10 @@ void CheckKeys (void)
 //
 	if (Paused)
 	{
+		{
+			void KL_OverlayNext(void);
+			KL_OverlayNext();
+		}
 		VW_FixRefreshBuffer ();
 		US_CenterWindow (8,3);
 		US_PrintCentered ("PAUSED");

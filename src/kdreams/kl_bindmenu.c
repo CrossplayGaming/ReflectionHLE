@@ -45,6 +45,10 @@ static void kl_draw_menu(int pos, const char *prompt)
 	int i;
 	id0_char_t line[40];
 
+	{
+		void KL_OverlayNext(void);
+		KL_OverlayNext(); /* single-window menu: safe over the wide frame */
+	}
 	VW_FixRefreshBuffer(); /* both pages coherent before drawing the window */
 	US_CenterWindow(26, KL_NROWS + 6);
 	US_CPrint("GAMEPAD CONTROLS");

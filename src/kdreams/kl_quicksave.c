@@ -60,6 +60,10 @@ static int kl_qs_confirm(const id0_char_t *msg)
 {
 	ScanCode sc;
 
+	{
+		void KL_OverlayNext(void);
+		KL_OverlayNext();
+	}
 	US_CenterWindow(22, 3);
 	US_PrintCentered(msg);
 	VW_UpdateScreen();
@@ -71,6 +75,10 @@ static int kl_qs_confirm(const id0_char_t *msg)
 
 static void kl_qs_notice(const id0_char_t *msg)
 {
+	{
+		void KL_OverlayNext(void);
+		KL_OverlayNext();
+	}
 	US_CenterWindow(22, 3);
 	US_PrintCentered(msg);
 	VW_UpdateScreen();
