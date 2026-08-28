@@ -429,7 +429,7 @@ void BEL_ST_SetGfxOutputRects(bool allowResize)
 		}
 	}
 
-#ifdef REFKEEN_VER_KDREAMS
+#ifdef REFKEEN_HAS_VER_KDREAMS
 	/* [KeenLauncher] reserve 16 of 240 game px per side so the bevel frame
 	   and a sliver of backdrop surround the classic screens on ALL sides
 	   (matches the Keen 1-3 / Omnispeak builds).  Fill mode opts out. */
@@ -746,7 +746,7 @@ static bool BEL_ST_UpdateTextureForEGAVGAMode(void)
 
 static uint32_t g_be_sdlLastRefreshTicks = 0;
 
-#ifdef REFKEEN_VER_KDREAMS
+#ifdef REFKEEN_HAS_VER_KDREAMS
 /* [KeenLauncher] Widescreen frame handed over by the game-side compositor
  * (kl_compositor.c).  While fresh, it is presented in place of the vanilla
  * CRTC window; any direct-to-page screen turns it off again, falling back
@@ -995,7 +995,7 @@ static bool BEL_ST_KL_PresentWide(void)
 	g_be_sdlLastRefreshTicks = BEL_ST_GetTicksMS();
 	return true;
 }
-#endif /* REFKEEN_VER_KDREAMS */
+#endif /* REFKEEN_HAS_VER_KDREAMS */
 
 void BEL_ST_UpdateHostDisplay(void)
 {
@@ -1006,7 +1006,7 @@ void BEL_ST_UpdateHostDisplay(void)
 	if (currRefreshTicks - g_be_sdlLastRefreshTicks >= 100)
 		g_sdlForceGfxControlUiRefresh = true;
 
-#ifdef REFKEEN_VER_KDREAMS
+#ifdef REFKEEN_HAS_VER_KDREAMS
 	/* [KeenLauncher] wide gameplay frame takes over the whole present.
 	   Every host refresh recomposes at the current interpolation alpha, so
 	   camera and sprites glide between sim frames. */
@@ -1033,7 +1033,7 @@ void BEL_ST_UpdateHostDisplay(void)
 
 	BEL_ST_SetDrawColor(0xFF000000);
 	BEL_ST_RenderClear();
-#ifdef REFKEEN_VER_KDREAMS
+#ifdef REFKEEN_HAS_VER_KDREAMS
 	/* [KeenLauncher] classic 4:3 screens (menus, control panel, text
 	   screens) get the collection's tiled backdrop + bevel frame in place
 	   of the flat border color; the content rect was inset in
