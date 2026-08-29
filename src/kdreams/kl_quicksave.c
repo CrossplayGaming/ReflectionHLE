@@ -55,9 +55,14 @@ static int kl_qs_skip_header(BE_FILE_T file)
 	       !strcmp(signature, EXTENSION);
 }
 
-/* a small centered prompt; returns 1 on Y/Enter, 0 on anything else */
+/* a small centered prompt; returns 1 on Y/Enter, 0 on anything else.
+ * The menu controller mapping is pushed while it waits, so the pad can
+ * answer: A arrives as Enter (yes), B as Escape (no).  Without it these
+ * prompts only heard the keyboard -- reached through the pad's function-
+ * key overlay, they could not be confirmed at all. */
 static int kl_qs_confirm(const id0_char_t *msg)
 {
+	extern BE_ST_ControllerMapping g_ingame_altcontrol_mapping_menu;
 	ScanCode sc;
 
 	{
@@ -67,14 +72,19 @@ static int kl_qs_confirm(const id0_char_t *msg)
 	US_CenterWindow(22, 3);
 	US_PrintCentered(msg);
 	VW_UpdateScreen();
+	BE_ST_AltControlScheme_Push();
+	BE_ST_AltControlScheme_PrepareControllerMapping(&g_ingame_altcontrol_mapping_menu);
 	IN_ClearKeysDown();
 	sc = IN_WaitForKey();
 	IN_ClearKeysDown();
+	BE_ST_AltControlScheme_Pop();
 	return sc == 0x15 /* Y */ || sc == sc_Return;
 }
 
 static void kl_qs_notice(const id0_char_t *msg)
 {
+	extern BE_ST_ControllerMapping g_ingame_altcontrol_mapping_menu;
+
 	{
 		void KL_OverlayNext(void);
 		KL_OverlayNext();
@@ -82,9 +92,12 @@ static void kl_qs_notice(const id0_char_t *msg)
 	US_CenterWindow(22, 3);
 	US_PrintCentered(msg);
 	VW_UpdateScreen();
+	BE_ST_AltControlScheme_Push();
+	BE_ST_AltControlScheme_PrepareControllerMapping(&g_ingame_altcontrol_mapping_menu);
 	IN_ClearKeysDown();
 	IN_WaitForKey();
 	IN_ClearKeysDown();
+	BE_ST_AltControlScheme_Pop();
 }
 
 void KL_QuickSaveLoad(int load)

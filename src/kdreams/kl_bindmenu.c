@@ -65,9 +65,23 @@ static void kl_draw_menu(int pos, const char *prompt)
 	VW_UpdateScreen();
 }
 
+/* While the capture prompt waits for a press, NO controller mapping may be
+ * active: under the menu mapping the pad's B/Back arrive as Escape and A as
+ * Enter, which either cancels the capture or re-triggers it -- the classic
+ * "can't bind the button that means back".  An all-zero mapping makes every
+ * button inert to the key layer while BE_ST_KL_PollPadFeature reads the
+ * hardware state directly. */
+static BE_ST_ControllerMapping kl_capture_mapping;
+
 void KL_BindMenu(void)
 {
+	extern BE_ST_ControllerMapping g_ingame_altcontrol_mapping_menu;
 	int pos = 0, done = 0;
+
+	/* the menu mapping: dpad = arrows, A = Enter, B = Esc -- this menu
+	   was keyboard-only before, unusable from the pad that opened it */
+	BE_ST_AltControlScheme_Push();
+	BE_ST_AltControlScheme_PrepareControllerMapping(&g_ingame_altcontrol_mapping_menu);
 
 	while (!done)
 	{
@@ -85,18 +99,31 @@ void KL_BindMenu(void)
 		else if (sc == sc_Return || sc == sc_Space)
 		{
 			int feat = -1;
+			id0_longword_t deadline;
 
 			kl_draw_menu(pos, "Press a pad button...");
 			IN_ClearKeysDown();
+			BE_ST_AltControlScheme_Push();
+			BE_ST_AltControlScheme_PrepareControllerMapping(&kl_capture_mapping);
 			/* wait for release of whatever is held, then a fresh press */
 			while (BE_ST_KL_PollPadFeature() >= 0)
 				BE_ST_ShortSleep();
+			/* the prompt gives up by itself: with every button bindable
+			   there is nothing left on the pad that could cancel */
+			deadline = SD_GetTimeCount() + 70 * 7;
 			while (feat < 0)
 			{
 				BE_ST_ShortSleep(); /* sleeps, presents AND polls events */
-				if (LastScan == sc_Escape)
+				if (LastScan == sc_Escape || SD_GetTimeCount() >= deadline)
 					break;
 				feat = BE_ST_KL_PollPadFeature();
+				/* Back/Guide/Start have no bind names and stay reserved
+				   (Back = menu, Start = pause): pressing one cancels */
+				if (feat == 4 || feat == 5 || feat == 6)
+				{
+					feat = -1;
+					break;
+				}
 			}
 			if (feat >= 0)
 			{
@@ -116,10 +143,12 @@ void KL_BindMenu(void)
 			/* let go before the menu reads keys again */
 			while (BE_ST_KL_PollPadFeature() >= 0)
 				BE_ST_ShortSleep();
+			BE_ST_AltControlScheme_Pop();
 			IN_ClearKeysDown();
 		}
 	}
 	IN_ClearKeysDown();
+	BE_ST_AltControlScheme_Pop();
 	/* apply immediately through the game's own mapping refresh */
 	PrepareGamePlayControllerMapping();
 }

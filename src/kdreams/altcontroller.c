@@ -199,7 +199,9 @@ BE_ST_ControllerMapping g_ingame_altcontrol_mapping_funckeys = {
 		{NULL, BE_ST_SC_F6, 0, BE_ST_CTRL_MAP_KEYSCANCODE},
 		{NULL, BE_ST_SC_F7, 0, BE_ST_CTRL_MAP_KEYSCANCODE},
 		{0},
-		{0},
+		// Y = F9, the quickload -- it was unreachable from this overlay
+		// (F5 quicksave is on the d-pad below, but F9 was nowhere)
+		{NULL, BE_ST_SC_F9, 0, BE_ST_CTRL_MAP_KEYSCANCODE},
 		{0},
 		{0},
 		// Start button
