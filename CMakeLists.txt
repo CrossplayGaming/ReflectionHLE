@@ -179,7 +179,7 @@ configure_file(refkeen_config.h.in refkeen_config.h)
 include(CheckLibraryExists)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-	set(LIBRARIES log PRIVATE SDL3::SDL3)
+	set(LIBRARIES PRIVATE log SDL3::SDL3)
 else ()
 	set(LIBRARIES PRIVATE SDL3::SDL3 ${SPEEXDSP_LIBRARIES})
 endif ()

@@ -43,6 +43,10 @@
 #endif
 
 #include <string.h>
+#ifdef REFKEEN_PLATFORM_ANDROID
+#include <stdlib.h>
+#include <unistd.h>
+#endif
 #include <SDL3/SDL_main.h>
 
 #if (!defined REFKEEN_ENABLE_LAUNCHER) && (!defined REFKEEN_CONFIG_ENABLE_CMDLINE)
@@ -213,6 +217,17 @@ static bool parse_game_ver(char *arg, int *gameVer, void (**mainFuncPtr)(void))
 
 int main(int argc, char **argv)
 {
+#ifdef REFKEEN_PLATFORM_ANDROID
+	// The Megarocket launcher APK hosts this engine as an activity and
+	// points RHLE_CWD at the collection's keendreams/game folder, so the
+	// "Local" current-directory game scan and the relative -cfgdir /
+	// -datadir arguments behave exactly like the desktop launcher's.
+	{
+		const char *cwd = getenv("RHLE_CWD");
+		if (cwd)
+			chdir(cwd);
+	}
+#endif
 #ifdef REFKEEN_CONFIG_ENABLE_CMDLINE
 
 	// Parse arguments

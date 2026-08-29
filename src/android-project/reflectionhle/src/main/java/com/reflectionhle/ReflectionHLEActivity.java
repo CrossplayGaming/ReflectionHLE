@@ -1,6 +1,6 @@
 package com.reflectionhle;
 
-import org.libsdl.app.SDLActivity; 
+import org.libsdl3.app.SDLActivity; 
 import android.view.View;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
